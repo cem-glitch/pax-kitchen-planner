@@ -1,4 +1,4 @@
-name: Family OS APK
+name: Family OS Visual APK
 
 on:
   push:
@@ -12,7 +12,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -25,7 +24,7 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Create Family OS Android prototype
+      - name: Create Family OS visual Android prototype
         shell: bash
         run: |
           set -euo pipefail
@@ -35,18 +34,11 @@ jobs:
 
           cat > family-native/settings.gradle <<'EOF'
           pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
+              repositories { google(); mavenCentral(); gradlePluginPortal() }
           }
           dependencyResolutionManagement {
               repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories {
-                  google()
-                  mavenCentral()
-              }
+              repositories { google(); mavenCentral() }
           }
           rootProject.name = 'FamilyOS'
           include ':app'
@@ -59,9 +51,7 @@ jobs:
           EOF
 
           cat > family-native/app/build.gradle <<'EOF'
-          plugins {
-              id 'com.android.application'
-          }
+          plugins { id 'com.android.application' }
 
           android {
               namespace 'com.familyos.app'
@@ -71,8 +61,13 @@ jobs:
                   applicationId 'com.familyos.app'
                   minSdk 26
                   targetSdk 35
-                  versionCode 1
-                  versionName '0.1.0'
+                  versionCode 2
+                  versionName '0.2.0'
+              }
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
               }
           }
           EOF
@@ -88,9 +83,10 @@ jobs:
               <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
                   <item name="android:fontFamily">sans</item>
                   <item name="android:windowLightStatusBar">true</item>
-                  <item name="android:statusBarColor">#F6F7F8</item>
+                  <item name="android:statusBarColor">#F7F8FA</item>
                   <item name="android:navigationBarColor">#FFFFFF</item>
-                  <item name="android:colorAccent">#3F6FF5</item>
+                  <item name="android:colorAccent">#4467F2</item>
+                  <item name="android:windowActionModeOverlay">true</item>
               </style>
           </resources>
           EOF
@@ -104,9 +100,7 @@ jobs:
                   android:allowBackup="true"
                   android:label="Family OS"
                   android:theme="@style/AppTheme">
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true">
+                  <activity android:name=".MainActivity" android:exported="true">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
                           <category android:name="android.intent.category.LAUNCHER" />
@@ -122,8 +116,12 @@ jobs:
           import android.Manifest;
           import android.app.Activity;
           import android.content.pm.PackageManager;
+          import android.graphics.Canvas;
           import android.graphics.Color;
+          import android.graphics.Paint;
+          import android.graphics.Path;
           import android.graphics.Typeface;
+          import android.graphics.drawable.GradientDrawable;
           import android.os.Bundle;
           import android.view.Gravity;
           import android.view.View;
@@ -135,298 +133,476 @@ jobs:
           import android.widget.ScrollView;
           import android.widget.TextView;
           import android.widget.Toast;
+          import java.util.HashMap;
           import java.util.Locale;
+          import java.util.Map;
 
           public class MainActivity extends Activity {
               private LinearLayout content;
-              private final int accent = Color.rgb(63,111,245);
-              private final int text = Color.rgb(22,25,31);
-              private final int muted = Color.rgb(105,112,124);
-              private final int bg = Color.rgb(246,247,248);
-              private final int line = Color.rgb(226,229,234);
-              private final int danger = Color.rgb(205,48,48);
+              private String lang;
+              private String screen = "today";
+
+              private final int BG = Color.rgb(247,248,250);
+              private final int TEXT = Color.rgb(24,27,34);
+              private final int MUTED = Color.rgb(101,108,122);
+              private final int BLUE = Color.rgb(68,103,242);
+              private final int GREEN = Color.rgb(35,162,109);
+              private final int ORANGE = Color.rgb(237,145,58);
+              private final int PURPLE = Color.rgb(127,88,216);
+              private final int RED = Color.rgb(210,66,66);
+              private final int YELLOW = Color.rgb(232,179,48);
 
               @Override public void onCreate(Bundle b) {
                   super.onCreate(b);
+                  String l = Locale.getDefault().getLanguage();
+                  lang = supported(l) ? l : "en";
                   renderShell();
                   showToday();
+              }
+
+              private boolean supported(String l) {
+                  return l.equals("tr") || l.equals("sv") || l.equals("en") || l.equals("de")
+                          || l.equals("fr") || l.equals("es") || l.equals("ar");
               }
 
               private int dp(int v) {
                   return (int)(v * getResources().getDisplayMetrics().density + .5f);
               }
 
-              private TextView label(String value, int size, int color, boolean bold) {
-                  TextView t = new TextView(this);
-                  t.setText(value);
-                  t.setTextSize(size);
-                  t.setTextColor(color);
-                  if (bold) t.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-                  return t;
+              private String t(String key) {
+                  Map<String,String[]> d = new HashMap<>();
+                  d.put("today", new String[]{"Bugün","Idag","Today","Heute","Aujourd’hui","Hoy","اليوم"});
+                  d.put("family", new String[]{"Aile","Familj","Family","Familie","Famille","Familia","العائلة"});
+                  d.put("map", new String[]{"Harita","Karta","Map","Karte","Carte","Mapa","الخريطة"});
+                  d.put("home", new String[]{"Ev","Hem","Home","Zuhause","Maison","Casa","المنزل"});
+                  d.put("plan", new String[]{"Plan","Plan","Plan","Plan","Plan","Plan","الخطة"});
+                  d.put("ai", new String[]{"AI","AI","AI","KI","IA","IA","الذكاء"});
+                  d.put("hello", new String[]{"Aileniz bugün","Familjen idag","Your family today","Ihre Familie heute","Votre famille aujourd’hui","Tu familia hoy","عائلتك اليوم"});
+                  d.put("now", new String[]{"Şu anda","Just nu","Right now","Jetzt","En ce moment","Ahora","الآن"});
+                  d.put("important", new String[]{"Bugün önemli","Viktigt idag","Important today","Heute wichtig","Important aujourd’hui","Importante hoy","مهم اليوم"});
+                  d.put("upcoming", new String[]{"Yaklaşan","Kommande","Upcoming","Demnächst","À venir","Próximamente","القادم"});
+                  d.put("shopping", new String[]{"Alışveriş","Inköp","Shopping","Einkauf","Courses","Compras","التسوق"});
+                  d.put("school", new String[]{"Okul","Skola","School","Schule","École","Escuela","المدرسة"});
+                  d.put("football", new String[]{"Futbol","Fotboll","Football","Fußball","Football","Fútbol","كرة القدم"});
+                  d.put("location_on", new String[]{"Konum açık","Platsdelning på","Location on","Standort an","Localisation active","Ubicación activa","الموقع مفعل"});
+                  d.put("pickup", new String[]{"Theo’yu okuldan al","Hämta Theo","Pick up Theo","Theo abholen","Récupérer Theo","Recoger a Theo","اصطحاب ثيو"});
+                  d.put("medicine", new String[]{"İlaç hatırlatması","Medicinpåminnelse","Medicine reminder","Medikament","Rappel médicament","Recordatorio medicina","تذكير الدواء"});
+                  d.put("car", new String[]{"Araç servisi","Bilservice","Car service","Autoservice","Entretien voiture","Servicio del coche","صيانة السيارة"});
+                  d.put("lawn", new String[]{"Çimleri biç","Klipp gräset","Mow the lawn","Rasen mähen","Tondre la pelouse","Cortar césped","قص العشب"});
+                  d.put("days3", new String[]{"3 gün kaldı","Om 3 dagar","In 3 days","In 3 Tagen","Dans 3 jours","En 3 días","خلال 3 أيام"});
+                  d.put("days5", new String[]{"5 gün kaldı","Om 5 dagar","In 5 days","In 5 Tagen","Dans 5 jours","En 5 días","خلال 5 أيام"});
+                  d.put("items8", new String[]{"8 ürün","8 varor","8 items","8 Artikel","8 articles","8 artículos","8 عناصر"});
+                  d.put("ask", new String[]{"Family AI’a sor","Fråga Family AI","Ask Family AI","Family AI fragen","Demander à Family AI","Preguntar a Family AI","اسأل Family AI"});
+                  d.put("members", new String[]{"Aile üyeleri","Familjemedlemmar","Family members","Familienmitglieder","Membres de la famille","Miembros de la familia","أفراد العائلة"});
+                  d.put("parent", new String[]{"Ebeveyn","Förälder","Parent","Elternteil","Parent","Padre/Madre","ولي أمر"});
+                  d.put("child", new String[]{"Çocuk","Barn","Child","Kind","Enfant","Niño/a","طفل"});
+                  d.put("safezones", new String[]{"Güvenli bölgeler","Säkra zoner","Safe zones","Sichere Zonen","Zones sûres","Zonas seguras","المناطق الآمنة"});
+                  d.put("arrive", new String[]{"Giriş/çıkış bildirimi","Avisering vid in/ut","Arrival/departure alerts","Ankunft/Abfahrt","Alertes arrivée/départ","Alertas entrada/salida","تنبيهات الوصول والمغادرة"});
+                  d.put("permission", new String[]{"Konum iznini test et","Testa platsbehörighet","Test location permission","Standort testen","Tester la localisation","Probar ubicación","اختبار إذن الموقع"});
+                  d.put("house", new String[]{"Ev yönetimi","Hemhantering","Home management","Hausverwaltung","Gestion maison","Gestión del hogar","إدارة المنزل"});
+                  d.put("documents", new String[]{"Belgeler","Dokument","Documents","Dokumente","Documents","Documentos","المستندات"});
+                  d.put("health", new String[]{"Sağlık","Hälsa","Health","Gesundheit","Santé","Salud","الصحة"});
+                  d.put("calendar", new String[]{"Takvim","Kalender","Calendar","Kalender","Calendrier","Calendario","التقويم"});
+                  d.put("tasks", new String[]{"Görevler","Uppgifter","Tasks","Aufgaben","Tâches","Tareas","المهام"});
+                  d.put("travel", new String[]{"Tatil","Resa","Travel","Reise","Voyage","Viaje","السفر"});
+                  d.put("rules", new String[]{"Aile otomasyonları","Familjeregler","Family Rules","Familienregeln","Règles famille","Reglas familiares","قواعد العائلة"});
+                  d.put("ai_title", new String[]{"Ne yapmak istiyorsun?","Vad vill du göra?","What do you want to do?","Was möchten Sie tun?","Que voulez-vous faire ?","¿Qué quieres hacer?","ماذا تريد أن تفعل؟"});
+                  d.put("ai_hint", new String[]{"Normal konuşur gibi yaz...","Skriv som du pratar...","Write naturally...","Einfach schreiben...","Écrivez naturellement...","Escribe normalmente...","اكتب بشكل طبيعي..."});
+                  d.put("interpret", new String[]{"İşleme dönüştür","Skapa åtgärd","Create action","Aktion erstellen","Créer l’action","Crear acción","إنشاء إجراء"});
+                  d.put("sos", new String[]{"ACİL","SOS","SOS","SOS","SOS","SOS","طوارئ"});
+                  d.put("sos_note", new String[]{"Basılı tutarak aileye acil uyarı gönder","Håll in för familjealarm","Hold to alert family","Gedrückt halten für Alarm","Maintenir pour alerter","Mantén para alertar","اضغط مطولاً لتنبيه العائلة"});
+                  String[] langs = {"tr","sv","en","de","fr","es","ar"};
+                  int idx = 2;
+                  for (int i=0;i<langs.length;i++) if (langs[i].equals(lang)) idx=i;
+                  String[] a = d.get(key);
+                  return a == null ? key : a[idx];
+              }
+
+              private GradientDrawable shape(int color, float radius) {
+                  GradientDrawable g = new GradientDrawable();
+                  g.setColor(color);
+                  g.setCornerRadius(dp((int)radius));
+                  return g;
+              }
+
+              private int mix(int color, int whitePercent) {
+                  int r = (Color.red(color)*(100-whitePercent)+255*whitePercent)/100;
+                  int g = (Color.green(color)*(100-whitePercent)+255*whitePercent)/100;
+                  int b = (Color.blue(color)*(100-whitePercent)+255*whitePercent)/100;
+                  return Color.rgb(r,g,b);
+              }
+
+              private TextView txt(String s, int sp, int color, boolean bold) {
+                  TextView v = new TextView(this);
+                  v.setText(s);
+                  v.setTextSize(sp);
+                  v.setTextColor(color);
+                  if (bold) v.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+                  return v;
               }
 
               private void renderShell() {
                   LinearLayout root = new LinearLayout(this);
                   root.setOrientation(LinearLayout.VERTICAL);
-                  root.setBackgroundColor(bg);
+                  root.setBackgroundColor(BG);
 
                   ScrollView scroll = new ScrollView(this);
+                  scroll.setFillViewport(true);
                   content = new LinearLayout(this);
                   content.setOrientation(LinearLayout.VERTICAL);
-                  content.setPadding(dp(18), dp(22), dp(18), dp(110));
-                  scroll.addView(content, new ScrollView.LayoutParams(
-                          ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-                  root.addView(scroll, new LinearLayout.LayoutParams(
-                          ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+                  content.setPadding(dp(18), dp(12), dp(18), dp(36));
+                  scroll.addView(content, new ScrollView.LayoutParams(-1,-2));
+                  root.addView(scroll, new LinearLayout.LayoutParams(-1,0,1));
 
-                  HorizontalScrollView navScroll = new HorizontalScrollView(this);
-                  navScroll.setHorizontalScrollBarEnabled(false);
-                  navScroll.setBackgroundColor(Color.WHITE);
                   LinearLayout nav = new LinearLayout(this);
-                  nav.setOrientation(LinearLayout.HORIZONTAL);
-                  nav.setPadding(dp(8), dp(8), dp(8), dp(8));
-
-                  addNav(nav, "Today", this::showToday, false);
-                  addNav(nav, "Family", this::showFamily, false);
-                  addNav(nav, "Map", this::showMap, false);
-                  addNav(nav, "Home", this::showHome, false);
-                  addNav(nav, "Plan", this::showPlan, false);
-                  addNav(nav, "AI", this::showAI, false);
-                  addNav(nav, "SOS", this::showSOS, true);
-
-                  navScroll.addView(nav);
-                  root.addView(navScroll, new LinearLayout.LayoutParams(
-                          ViewGroup.LayoutParams.MATCH_PARENT, dp(68)));
+                  nav.setGravity(Gravity.CENTER);
+                  nav.setPadding(dp(4),dp(5),dp(4),dp(5));
+                  nav.setBackgroundColor(Color.WHITE);
+                  addNav(nav,"⌂",t("today"),()->showToday(),BLUE);
+                  addNav(nav,"👨‍👩‍👧",t("family"),()->showFamily(),GREEN);
+                  addNav(nav,"⌖",t("map"),()->showMap(),ORANGE);
+                  addNav(nav,"▦",t("home"),()->showHome(),PURPLE);
+                  addNav(nav,"✦",t("ai"),()->showAI(),BLUE);
+                  root.addView(nav,new LinearLayout.LayoutParams(-1,dp(72)));
                   setContentView(root);
               }
 
-              private void addNav(LinearLayout nav, String title, Runnable action, boolean red) {
-                  Button b = new Button(this);
-                  b.setText(title);
-                  b.setAllCaps(false);
-                  b.setTextColor(red ? danger : text);
-                  b.setTextSize(13);
-                  b.setBackgroundColor(Color.TRANSPARENT);
-                  b.setOnClickListener(v -> action.run());
-                  nav.addView(b, new LinearLayout.LayoutParams(dp(82), dp(52)));
-              }
-
-              private void clear(String title, String subtitle) {
-                  content.removeAllViews();
-                  TextView kicker = label("FAMILY OS · V3 PROTOTYPE", 11, accent, true);
-                  kicker.setLetterSpacing(.12f);
-                  content.addView(kicker);
-                  TextView h = label(title, 32, text, true);
-                  h.setPadding(0, dp(5), 0, dp(4));
-                  content.addView(h);
-                  TextView s = label(subtitle, 15, muted, false);
-                  s.setPadding(0, 0, 0, dp(16));
-                  content.addView(s);
-              }
-
-              private void section(String title) {
-                  TextView s = label(title, 18, text, true);
-                  s.setPadding(0, dp(18), 0, dp(8));
-                  content.addView(s);
-              }
-
-              private void tip(String title, String body) {
-                  LinearLayout box = box(Color.rgb(232,238,255));
-                  TextView h = label(title, 14, accent, true);
-                  TextView b = label(body, 13, muted, false);
-                  b.setPadding(0, dp(4), 0, 0);
-                  box.addView(h);
-                  box.addView(b);
-                  content.addView(box);
-              }
-
-              private LinearLayout box(int color) {
+              private void addNav(LinearLayout row, String icon, String label, Runnable action, int color) {
                   LinearLayout c = new LinearLayout(this);
                   c.setOrientation(LinearLayout.VERTICAL);
-                  c.setPadding(dp(16), dp(14), dp(16), dp(14));
-                  c.setBackgroundColor(color);
-                  LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
-                          ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                  p.setMargins(0, dp(5), 0, dp(7));
+                  c.setGravity(Gravity.CENTER);
+                  TextView i = txt(icon,22,color,true);
+                  TextView l = txt(label,10,MUTED,false);
+                  l.setGravity(Gravity.CENTER);
+                  c.addView(i);
+                  c.addView(l);
+                  c.setOnClickListener(v->action.run());
+                  row.addView(c,new LinearLayout.LayoutParams(0,-1,1));
+              }
+
+              private void header(String title) {
+                  content.removeAllViews();
+                  LinearLayout top = new LinearLayout(this);
+                  top.setGravity(Gravity.CENTER_VERTICAL);
+                  TextView brand = txt("FAMILY OS",13,BLUE,true);
+                  brand.setLetterSpacing(.12f);
+                  top.addView(brand,new LinearLayout.LayoutParams(0,-2,1));
+                  TextView langBtn = txt("🌐 " + lang.toUpperCase(),13,TEXT,true);
+                  langBtn.setPadding(dp(12),dp(8),dp(12),dp(8));
+                  langBtn.setBackground(shape(Color.WHITE,18));
+                  langBtn.setOnClickListener(v->cycleLanguage());
+                  top.addView(langBtn);
+                  content.addView(top);
+                  TextView h = txt(title,31,TEXT,true);
+                  h.setPadding(0,dp(10),0,dp(12));
+                  content.addView(h);
+              }
+
+              private void cycleLanguage() {
+                  String[] ls={"tr","sv","en","de","fr","es","ar"};
+                  int i=0;
+                  for(int x=0;x<ls.length;x++) if(ls[x].equals(lang)) i=x;
+                  lang=ls[(i+1)%ls.length];
+                  renderShell();
+                  if(screen.equals("today")) showToday();
+                  else if(screen.equals("family")) showFamily();
+                  else if(screen.equals("map")) showMap();
+                  else if(screen.equals("home")) showHome();
+                  else if(screen.equals("ai")) showAI();
+              }
+
+              private void section(String s) {
+                  TextView v=txt(s,18,TEXT,true);
+                  v.setPadding(0,dp(18),0,dp(8));
+                  content.addView(v);
+              }
+
+              private LinearLayout cardBase(int color) {
+                  LinearLayout c=new LinearLayout(this);
+                  c.setOrientation(LinearLayout.VERTICAL);
+                  c.setPadding(dp(16),dp(14),dp(16),dp(14));
+                  c.setBackground(shape(color,22));
+                  LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);
+                  p.setMargins(0,dp(5),0,dp(7));
                   c.setLayoutParams(p);
                   return c;
               }
 
-              private void card(String title, String detail) {
-                  LinearLayout c = box(Color.WHITE);
-                  TextView h = label(title, 16, text, true);
-                  TextView d = label(detail, 13, muted, false);
-                  d.setPadding(0, dp(5), 0, 0);
-                  c.addView(h);
-                  c.addView(d);
+              private void visualCard(String icon,String title,String detail,int color) {
+                  LinearLayout c=cardBase(Color.WHITE);
+                  LinearLayout r=new LinearLayout(this);
+                  r.setGravity(Gravity.CENTER_VERTICAL);
+                  TextView iv=txt(icon,27,color,true);
+                  iv.setGravity(Gravity.CENTER);
+                  iv.setBackground(shape(mix(color,86),18));
+                  r.addView(iv,new LinearLayout.LayoutParams(dp(54),dp(54)));
+                  LinearLayout texts=new LinearLayout(this);
+                  texts.setOrientation(LinearLayout.VERTICAL);
+                  texts.setPadding(dp(13),0,0,0);
+                  texts.addView(txt(title,16,TEXT,true));
+                  TextView d=txt(detail,13,MUTED,false);
+                  d.setPadding(0,dp(4),0,0);
+                  texts.addView(d);
+                  r.addView(texts,new LinearLayout.LayoutParams(0,-2,1));
+                  c.addView(r);
                   content.addView(c);
               }
 
-              private Button primary(String title) {
-                  Button b = new Button(this);
-                  b.setText(title);
-                  b.setAllCaps(false);
-                  b.setTextColor(Color.WHITE);
-                  b.setTextSize(15);
-                  b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-                  b.setBackgroundColor(accent);
-                  LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
-                          ViewGroup.LayoutParams.MATCH_PARENT, dp(52));
-                  p.setMargins(0, dp(10), 0, dp(8));
-                  b.setLayoutParams(p);
-                  return b;
+              private LinearLayout tile(String icon,String title,String small,int color) {
+                  LinearLayout c=new LinearLayout(this);
+                  c.setOrientation(LinearLayout.VERTICAL);
+                  c.setPadding(dp(14),dp(14),dp(14),dp(14));
+                  c.setBackground(shape(mix(color,88),22));
+                  TextView iv=txt(icon,29,color,true);
+                  c.addView(iv);
+                  TextView h=txt(title,15,TEXT,true);
+                  h.setPadding(0,dp(9),0,dp(3));
+                  c.addView(h);
+                  c.addView(txt(small,12,MUTED,false));
+                  return c;
+              }
+
+              private void tileRow(LinearLayout a, LinearLayout b) {
+                  LinearLayout r=new LinearLayout(this);
+                  LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(132),1);
+                  lp.setMargins(0,dp(5),dp(5),dp(5));
+                  r.addView(a,lp);
+                  LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(0,dp(132),1);
+                  rp.setMargins(dp(5),dp(5),0,dp(5));
+                  r.addView(b,rp);
+                  content.addView(r);
               }
 
               private void showToday() {
-                  clear("Today", "Everything that needs attention, in one place.");
-                  tip("Small guidance", "Only important items appear here. Open the other sections when you need detail.");
-                  section("Family right now");
-                  card("Melissa · School", "Location shared · updated now · battery 76%");
-                  card("Theo · Football", "Location shared · updated now · battery 41%");
-                  section("Important today");
-                  card("15:20 · Pick up Theo", "Assigned to Sandra · High priority");
-                  card("19:00 · Medicine reminder", "Theo · Waiting for confirmation");
-                  section("Upcoming");
-                  card("Car service", "In 3 days · Family car");
-                  card("Mow the lawn", "In 5 days · Home maintenance");
-                  section("Shopping");
-                  card("8 items", "Milk · eggs · bread · fruit · detergent + 3");
+                  screen="today";
+                  header(t("hello"));
+                  FamilyHero hero=new FamilyHero(this);
+                  content.addView(hero,new LinearLayout.LayoutParams(-1,dp(190)));
+
+                  section(t("now"));
+                  tileRow(
+                      tile("🎒","Melissa",t("school")+" · 76%",YELLOW),
+                      tile("⚽","Theo",t("football")+" · 41%",GREEN)
+                  );
+
+                  section(t("important"));
+                  visualCard("🚗","15:20 · "+t("pickup"),"Sandra · "+t("location_on"),ORANGE);
+                  visualCard("💊","19:00 · "+t("medicine"),"Theo · ⏳",RED);
+
+                  section(t("upcoming"));
+                  tileRow(
+                      tile("🔧",t("car"),t("days3"),PURPLE),
+                      tile("🌿",t("lawn"),t("days5"),GREEN)
+                  );
+
+                  section(t("shopping"));
+                  visualCard("🛒",t("items8"),"🥛  🥚  🍞  🍎  🧴  +3",BLUE);
+
                   section("Family AI");
-                  card("Ask naturally", "“What do we need to do this week?”");
+                  visualCard("✨",t("ask"),"“What do we need to do this week?”",PURPLE);
               }
 
               private void showFamily() {
-                  clear("Family", "Members, roles, permissions and children.");
-                  tip("Permissions", "Parents control who can see each child's location. Location sharing must be visible to the member.");
-                  card("Cem", "Parent · Admin");
-                  card("Sandra", "Parent · Admin");
-                  card("Melissa", "Child · Location sharing ON");
-                  card("Theo", "Child · Location sharing ON");
-                  section("Quick actions");
-                  card("Invite family member", "Send a secure family invitation.");
-                  card("Child permissions", "Location · SOS · Tasks · Calendar");
+                  screen="family";
+                  header(t("members"));
+                  visualCard("👨","Cem",t("parent")+" · Admin",BLUE);
+                  visualCard("👩","Sandra",t("parent")+" · Admin",PURPLE);
+                  visualCard("👧","Melissa",t("child")+" · "+t("location_on"),YELLOW);
+                  visualCard("👦","Theo",t("child")+" · "+t("location_on"),GREEN);
+                  section(t("safezones"));
+                  tileRow(
+                      tile("🏠",t("home"),t("arrive"),GREEN),
+                      tile("🏫",t("school"),t("arrive"),BLUE)
+                  );
               }
 
               private void showMap() {
-                  clear("Family Map", "Location prototype for authorized family members.");
-                  tip("Privacy", "This test build does not perform hidden tracking. Production will require explicit consent and a visible sharing status.");
-                  card("Melissa", "School · updated now · battery 76%");
-                  card("Theo", "Football field · updated now · battery 41%");
-                  card("Sandra", "Location sharing off");
-                  section("Safe zones");
-                  card("Home", "Arrival and departure alerts");
-                  card("School", "Arrival and departure alerts");
-                  Button permission = primary("Test location permission");
-                  permission.setOnClickListener(v -> {
-                      if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                          Toast.makeText(this, "Location permission is already granted.", Toast.LENGTH_SHORT).show();
-                      } else {
-                          requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 101);
-                      }
+                  screen="map";
+                  header(t("map"));
+                  MapMock map=new MapMock(this);
+                  content.addView(map,new LinearLayout.LayoutParams(-1,dp(300)));
+                  section(t("now"));
+                  visualCard("👧","Melissa","🏫 "+t("school")+" · 76% 🔋",YELLOW);
+                  visualCard("👦","Theo","⚽ "+t("football")+" · 41% 🔋",GREEN);
+
+                  Button b=new Button(this);
+                  b.setText("📍  "+t("permission"));
+                  b.setAllCaps(false);
+                  b.setTextColor(Color.WHITE);
+                  b.setTextSize(15);
+                  b.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
+                  b.setBackground(shape(BLUE,18));
+                  b.setOnClickListener(v->{
+                      if(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED)
+                          Toast.makeText(this,t("location_on"),Toast.LENGTH_SHORT).show();
+                      else requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION},101);
                   });
-                  content.addView(permission);
+                  LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(56));
+                  p.setMargins(0,dp(12),0,0);
+                  content.addView(b,p);
               }
 
               private void showHome() {
-                  clear("Home", "The family's house, shopping, cars, documents and maintenance.");
-                  tip("One home, one view", "Recurring maintenance can become automatic Family Rules later.");
-                  card("Shopping", "8 open items · shared in real time");
-                  card("Home maintenance", "Lawn in 5 days · smoke alarm in 24 days");
-                  card("Family car", "Service in 3 days · inspection in 8 days");
-                  card("Documents", "Insurance · warranties · school papers");
-                  card("Health reminders", "Medication and appointment reminders");
-              }
-
-              private void showPlan() {
-                  clear("Plan", "Calendar, tasks, travel and automation.");
-                  tip("Family Rules", "Example: when a child arrives at school, notify the selected parent.");
-                  section("Today");
-                  card("08:00 · School", "Melissa");
-                  card("15:20 · School pickup", "Theo · Sandra");
-                  card("18:00 · Football", "Theo");
-                  section("Rules");
-                  card("School arrival", "If Theo enters School safe zone → notify parents");
-                  card("Car service", "30 days before due date → create task");
-                  card("Lawn", "Every 14 days → create home task");
+                  screen="home";
+                  header(t("house"));
+                  tileRow(
+                      tile("🛒",t("shopping"),t("items8"),BLUE),
+                      tile("🚘",t("car"),t("days3"),PURPLE)
+                  );
+                  tileRow(
+                      tile("🏡",t("home"),t("lawn"),GREEN),
+                      tile("💊",t("health"),t("medicine"),RED)
+                  );
+                  tileRow(
+                      tile("📄",t("documents"),"Insurance · School · Warranty",ORANGE),
+                      tile("✈️",t("travel"),"Trips · Hotel · Packing",BLUE)
+                  );
+                  section(t("plan"));
+                  visualCard("📅",t("calendar"),"08:00  🎒 · 15:20 🚗 · 18:00 ⚽",BLUE);
+                  visualCard("✅",t("tasks"),"3 open · 2 completed",GREEN);
+                  visualCard("⚙️",t("rules"),"School → alert · Service → task",PURPLE);
               }
 
               private void showAI() {
-                  clear("Family AI", "Create family actions with normal language.");
-                  tip("Example", "“Friday at 09:00 Sandra takes the car to service. Remind us one day and one hour before.”");
-                  EditText input = new EditText(this);
-                  input.setHint("Tell Family AI what you need...");
-                  input.setMinHeight(dp(110));
+                  screen="ai";
+                  header("Family AI");
+                  AIHero h=new AIHero(this);
+                  content.addView(h,new LinearLayout.LayoutParams(-1,dp(175)));
+                  TextView q=txt(t("ai_title"),20,TEXT,true);
+                  q.setPadding(0,dp(14),0,dp(8));
+                  content.addView(q);
+
+                  EditText input=new EditText(this);
+                  input.setHint(t("ai_hint"));
+                  input.setTextSize(15);
+                  input.setMinHeight(dp(108));
                   input.setGravity(Gravity.TOP);
-                  input.setPadding(dp(14), dp(14), dp(14), dp(14));
-                  input.setBackgroundColor(Color.WHITE);
-                  content.addView(input, new LinearLayout.LayoutParams(
-                          ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-                  Button run = primary("Interpret request");
-                  TextView result = label("", 14, text, false);
-                  result.setPadding(0, dp(8), 0, dp(8));
-                  run.setOnClickListener(v -> {
-                      String q = input.getText().toString().trim();
-                      if (q.isEmpty()) {
-                          Toast.makeText(this, "Write a request first.", Toast.LENGTH_SHORT).show();
+                  input.setPadding(dp(16),dp(14),dp(16),dp(14));
+                  input.setBackground(shape(Color.WHITE,20));
+                  content.addView(input,new LinearLayout.LayoutParams(-1,-2));
+
+                  Button run=new Button(this);
+                  run.setText("✨  "+t("interpret"));
+                  run.setAllCaps(false);
+                  run.setTextColor(Color.WHITE);
+                  run.setTextSize(15);
+                  run.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
+                  run.setBackground(shape(PURPLE,18));
+                  LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(56));
+                  p.setMargins(0,dp(12),0,0);
+                  content.addView(run,p);
+
+                  TextView result=txt("",14,TEXT,false);
+                  result.setPadding(0,dp(12),0,0);
+                  content.addView(result);
+                  run.setOnClickListener(v->{
+                      if(input.getText().toString().trim().isEmpty()) {
+                          Toast.makeText(this,t("ai_hint"),Toast.LENGTH_SHORT).show();
                       } else {
-                          result.setText("Prototype result:\n• Task created\n• Assigned to family member\n• Added to calendar\n• Reminder prepared\n\nLive AI will be connected in the backend phase.");
+                          result.setText("✅ "+t("tasks")+"\n📅 "+t("calendar")+"\n🔔 Reminder\n👤 Sandra");
                       }
                   });
-                  content.addView(run);
-                  content.addView(result);
-              }
 
-              private void showSOS() {
-                  clear("Emergency", "Fast access for urgent family situations.");
-                  tip("Test mode", "This APK does not contact emergency services or family members. Long-press only demonstrates the intended interaction.");
-                  TextView warning = label("SOS", 48, danger, true);
-                  warning.setGravity(Gravity.CENTER);
-                  warning.setPadding(0, dp(35), 0, dp(12));
-                  content.addView(warning);
-                  Button sos = new Button(this);
-                  sos.setText("PRESS AND HOLD FOR SOS TEST");
-                  sos.setAllCaps(false);
-                  sos.setTextColor(Color.WHITE);
-                  sos.setTextSize(16);
-                  sos.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-                  sos.setBackgroundColor(danger);
-                  sos.setOnLongClickListener(v -> {
-                      Toast.makeText(this, "SOS test completed — no message was sent.", Toast.LENGTH_LONG).show();
+                  section(t("sos"));
+                  LinearLayout sos=cardBase(mix(RED,88));
+                  TextView s=txt("🆘  "+t("sos"),23,RED,true);
+                  sos.addView(s);
+                  TextView d=txt(t("sos_note"),13,MUTED,false);
+                  d.setPadding(0,dp(6),0,0);
+                  sos.addView(d);
+                  sos.setOnLongClickListener(v->{
+                      Toast.makeText(this,"SOS test — no message sent",Toast.LENGTH_LONG).show();
                       return true;
                   });
-                  content.addView(sos, new LinearLayout.LayoutParams(
-                          ViewGroup.LayoutParams.MATCH_PARENT, dp(72)));
-                  section("Emergency information");
-                  card("Parents", "Cem · Sandra");
-                  card("Important medical information", "Production: protected with role-based access.");
-                  card("Last known child locations", "Production: available to authorized parents.");
+                  content.addView(sos);
               }
 
-              @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-                  super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-                  if (requestCode == 101) {
-                      boolean ok = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
-                      Toast.makeText(this, ok ? "Location permission granted." : "Location permission denied.", Toast.LENGTH_SHORT).show();
+              public class FamilyHero extends View {
+                  Paint p=new Paint(1);
+                  public FamilyHero(Activity a){super(a); setBackground(shape(Color.rgb(234,240,255),26));}
+                  @Override protected void onDraw(Canvas c){
+                      super.onDraw(c);
+                      float w=getWidth(),h=getHeight();
+                      p.setColor(Color.rgb(255,211,80)); c.drawCircle(w*.84f,h*.22f,dp(24),p);
+                      p.setColor(Color.rgb(255,255,255)); c.drawCircle(w*.18f,h*.24f,dp(17),p); c.drawCircle(w*.24f,h*.22f,dp(22),p);
+                      p.setColor(Color.rgb(77,116,225));
+                      Path roof=new Path(); roof.moveTo(w*.23f,h*.62f); roof.lineTo(w*.48f,h*.32f); roof.lineTo(w*.72f,h*.62f); roof.close(); c.drawPath(roof,p);
+                      p.setColor(Color.WHITE); c.drawRect(w*.31f,h*.58f,w*.64f,h*.89f,p);
+                      p.setColor(Color.rgb(45,169,112)); c.drawRect(0,h*.88f,w,h,p);
+                      drawPerson(c,w*.18f,h*.76f,BLUE,"C");
+                      drawPerson(c,w*.80f,h*.75f,PURPLE,"S");
+                      drawPerson(c,w*.44f,h*.80f,YELLOW,"M");
+                      drawPerson(c,w*.58f,h*.81f,GREEN,"T");
+                      p.setTextSize(dp(16)); p.setColor(TEXT); p.setTypeface(Typeface.DEFAULT_BOLD);
+                      c.drawText("Family OS",dp(18),dp(28),p);
+                  }
+                  private void drawPerson(Canvas c,float x,float y,int col,String letter){
+                      p.setColor(col); c.drawCircle(x,y,dp(22),p);
+                      p.setColor(Color.WHITE); p.setTextAlign(Paint.Align.CENTER); p.setTextSize(dp(14)); p.setTypeface(Typeface.DEFAULT_BOLD);
+                      c.drawText(letter,x,y+dp(5),p); p.setTextAlign(Paint.Align.LEFT);
+                  }
+              }
+
+              public class MapMock extends View {
+                  Paint p=new Paint(1);
+                  public MapMock(Activity a){super(a); setBackground(shape(Color.rgb(239,244,240),26));}
+                  @Override protected void onDraw(Canvas c){
+                      super.onDraw(c);
+                      float w=getWidth(),h=getHeight();
+                      p.setStrokeWidth(dp(7)); p.setColor(Color.WHITE);
+                      c.drawLine(0,h*.28f,w,h*.58f,p); c.drawLine(w*.35f,0,w*.62f,h,p); c.drawLine(0,h*.82f,w,h*.43f,p);
+                      p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(dp(2)); p.setColor(mix(GREEN,40));
+                      c.drawCircle(w*.28f,h*.38f,dp(55),p); c.drawCircle(w*.72f,h*.67f,dp(48),p);
+                      p.setStyle(Paint.Style.FILL);
+                      pin(c,w*.28f,h*.38f,YELLOW,"M"); pin(c,w*.72f,h*.67f,GREEN,"T");
+                      p.setColor(TEXT); p.setTextSize(dp(14)); p.setTypeface(Typeface.DEFAULT_BOLD);
+                      c.drawText("🏠 Home",dp(18),h-dp(20),p);
+                  }
+                  private void pin(Canvas c,float x,float y,int col,String s){
+                      p.setColor(col); c.drawCircle(x,y,dp(23),p);
+                      p.setColor(Color.WHITE); p.setTextAlign(Paint.Align.CENTER); p.setTextSize(dp(14)); p.setTypeface(Typeface.DEFAULT_BOLD);
+                      c.drawText(s,x,y+dp(5),p); p.setTextAlign(Paint.Align.LEFT);
+                  }
+              }
+
+              public class AIHero extends View {
+                  Paint p=new Paint(1);
+                  public AIHero(Activity a){super(a); setBackground(shape(Color.rgb(243,237,255),26));}
+                  @Override protected void onDraw(Canvas c){
+                      super.onDraw(c);
+                      float w=getWidth(),h=getHeight();
+                      p.setColor(PURPLE); c.drawCircle(w*.50f,h*.50f,dp(46),p);
+                      p.setColor(Color.WHITE); p.setTextAlign(Paint.Align.CENTER); p.setTextSize(dp(38)); c.drawText("✦",w*.50f,h*.62f,p);
+                      p.setColor(mix(PURPLE,62)); c.drawCircle(w*.20f,h*.32f,dp(16),p); c.drawCircle(w*.82f,h*.28f,dp(11),p); c.drawCircle(w*.78f,h*.75f,dp(18),p);
+                      p.setTextAlign(Paint.Align.LEFT);
+                  }
+              }
+
+              @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] grantResults){
+                  super.onRequestPermissionsResult(requestCode,permissions,grantResults);
+                  if(requestCode==101){
+                      boolean ok=grantResults.length>0 && grantResults[0]==PackageManager.PERMISSION_GRANTED;
+                      Toast.makeText(this,ok?t("location_on"):"Permission denied",Toast.LENGTH_SHORT).show();
                   }
               }
           }
           EOF
 
-      - name: Build installable debug APK
+      - name: Build Family OS visual APK
         working-directory: family-native
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 
       - name: Collect APK
         run: |
           mkdir -p output
-          cp family-native/app/build/outputs/apk/debug/app-debug.apk output/FamilyOS-V3-Test.apk
-          sha256sum output/FamilyOS-V3-Test.apk > output/SHA256.txt
+          cp family-native/app/build/outputs/apk/debug/app-debug.apk output/FamilyOS-V3-Visual.apk
+          sha256sum output/FamilyOS-V3-Visual.apk > output/SHA256.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FamilyOS-V3-Test-APK
+          name: FamilyOS-V3-Visual-APK
           path: |
-            output/FamilyOS-V3-Test.apk
+            output/FamilyOS-V3-Visual.apk
             output/SHA256.txt
           if-no-files-found: error
           retention-days: 7

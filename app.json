@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "PAX Köksplanerare",
+    "slug": "pax-koksplanerare",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "se.paxkok.koksplanerare",
+      "versionCode": 1
+    }
+  }
+}

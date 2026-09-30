@@ -78,6 +78,7 @@ function DraggableEquipment({
   roomD,
   walls,
   equipment,
+  interactive,
   onSelect,
   onCommitMove,
 }) {
@@ -85,44 +86,57 @@ function DraggableEquipment({
   const startX = item.x * scale;
   const startY = item.y * scale;
   const pan = useRef(new Animated.ValueXY({ x: startX, y: startY })).current;
+  const itemRef = useRef(item);
+  const dataRef = useRef({ scale, roomW, roomD, walls, equipment, interactive, onSelect, onCommitMove });
 
   useEffect(() => {
+    itemRef.current = item;
+    dataRef.current = { scale, roomW, roomD, walls, equipment, interactive, onSelect, onCommitMove };
     pan.setValue({ x: item.x * scale, y: item.y * scale });
-  }, [item.x, item.y, item.rotation, scale, pan]);
+  }, [item, scale, roomW, roomD, walls, equipment, interactive, onSelect, onCommitMove, pan]);
 
   const responder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => onSelect({ kind: "equipment", id: item.instanceId }),
+      onStartShouldSetPanResponder: () =>
+        dataRef.current.interactive && !itemRef.current.locked,
+      onMoveShouldSetPanResponder: () =>
+        dataRef.current.interactive && !itemRef.current.locked,
+      onPanResponderGrant: () => {
+        const current = itemRef.current;
+        dataRef.current.onSelect({ kind: "equipment", id: current.instanceId });
+      },
       onPanResponderMove: (_, gesture) => {
+        const current = itemRef.current;
+        const currentScale = dataRef.current.scale;
         pan.setValue({
-          x: item.x * scale + gesture.dx,
-          y: item.y * scale + gesture.dy,
+          x: current.x * currentScale + gesture.dx,
+          y: current.y * currentScale + gesture.dy,
         });
       },
       onPanResponderRelease: (_, gesture) => {
+        const current = itemRef.current;
+        const data = dataRef.current;
         let candidate = {
-          ...item,
-          x: snap(item.x + gesture.dx / scale, 50),
-          y: snap(item.y + gesture.dy / scale, 50),
+          ...current,
+          x: snap(current.x + gesture.dx / data.scale, 50),
+          y: snap(current.y + gesture.dy / data.scale, 50),
         };
 
-        candidate = snapEquipmentToBoundary(candidate, roomW, roomD, 130);
-        candidate = snapEquipmentToWalls(candidate, walls, roomW, roomD, 160);
+        candidate = snapEquipmentToBoundary(candidate, data.roomW, data.roomD, 130);
+        candidate = snapEquipmentToWalls(candidate, data.walls, data.roomW, data.roomD, 160);
 
-        const collision = equipment.some(
+        const collision = data.equipment.some(
           (other) =>
-            other.instanceId !== item.instanceId &&
+            other.instanceId !== current.instanceId &&
             rectanglesOverlap(candidate, other)
         );
 
         if (collision) {
-          pan.setValue({ x: item.x * scale, y: item.y * scale });
+          pan.setValue({ x: current.x * data.scale, y: current.y * data.scale });
           return;
         }
 
-        onCommitMove(candidate);
+        data.onCommitMove(candidate);
       },
     })
   ).current;
@@ -130,8 +144,10 @@ function DraggableEquipment({
   return (
     <Animated.View
       {...responder.panHandlers}
+      pointerEvents={interactive ? "auto" : "none"}
       style={[
         styles.equipment,
+        item.locked && styles.equipmentLocked,
         selected && styles.equipmentSelected,
         {
           width: Math.max(36, size.w * scale),
@@ -165,16 +181,22 @@ function EndpointHandle({
   roomD,
   onMoveEnd,
 }) {
+  const dataRef = useRef({ point, scale, roomW, roomD, onMoveEnd });
+  useEffect(() => {
+    dataRef.current = { point, scale, roomW, roomD, onMoveEnd };
+  }, [point, scale, roomW, roomD, onMoveEnd]);
+
   const responder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderRelease: (_, gesture) => {
+        const data = dataRef.current;
         const next = {
-          x: clamp(snap(point.x + gesture.dx / scale), 0, roomW),
-          y: clamp(snap(point.y + gesture.dy / scale), 0, roomD),
+          x: clamp(snap(data.point.x + gesture.dx / data.scale), 0, data.roomW),
+          y: clamp(snap(data.point.y + gesture.dy / data.scale), 0, data.roomD),
         };
-        onMoveEnd(next);
+        data.onMoveEnd(next);
       },
     })
   ).current;
@@ -516,6 +538,7 @@ export default function Planner2D({
             roomD={roomD}
             walls={editor.walls}
             equipment={editor.equipment}
+            interactive={tool === "select"}
             onSelect={setSelected}
             onCommitMove={commitEquipmentMove}
           />
@@ -625,6 +648,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 2,
     zIndex: 8,
+  },
+  equipmentLocked: {
+    opacity: 0.82,
+    borderStyle: "dashed",
   },
   equipmentSelected: {
     borderWidth: 2,

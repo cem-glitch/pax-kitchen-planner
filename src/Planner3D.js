@@ -320,7 +320,7 @@ export default function Planner3D({
       </View>
 
       <Text style={styles.note}>
-        Nästa 3D-steg är produktmodeller i GLB-format. Då ersätts blocken med faktiska maskiner.
+        3D-vyn följer ritningens väggar, öppningar, höjd, produktmått och tekniska punkter.
       </Text>
     </View>
   );

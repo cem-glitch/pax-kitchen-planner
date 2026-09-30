@@ -1,0 +1,432 @@
+name: Family OS APK
+
+on:
+  push:
+    branches:
+      - family-os-apk-build
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Create Family OS Android prototype
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf family-native
+          mkdir -p family-native/app/src/main/java/com/familyos/app
+          mkdir -p family-native/app/src/main/res/values
+
+          cat > family-native/settings.gradle <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = 'FamilyOS'
+          include ':app'
+          EOF
+
+          cat > family-native/build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application' version '8.7.3' apply false
+          }
+          EOF
+
+          cat > family-native/app/build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application'
+          }
+
+          android {
+              namespace 'com.familyos.app'
+              compileSdk 35
+
+              defaultConfig {
+                  applicationId 'com.familyos.app'
+                  minSdk 26
+                  targetSdk 35
+                  versionCode 1
+                  versionName '0.1.0'
+              }
+          }
+          EOF
+
+          cat > family-native/app/src/main/res/values/strings.xml <<'EOF'
+          <resources>
+              <string name="app_name">Family OS</string>
+          </resources>
+          EOF
+
+          cat > family-native/app/src/main/res/values/styles.xml <<'EOF'
+          <resources>
+              <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+                  <item name="android:fontFamily">sans</item>
+                  <item name="android:windowLightStatusBar">true</item>
+                  <item name="android:statusBarColor">#F6F7F8</item>
+                  <item name="android:navigationBarColor">#FFFFFF</item>
+                  <item name="android:colorAccent">#3F6FF5</item>
+              </style>
+          </resources>
+          EOF
+
+          cat > family-native/app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+              <application
+                  android:allowBackup="true"
+                  android:label="Family OS"
+                  android:theme="@style/AppTheme">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat > family-native/app/src/main/java/com/familyos/app/MainActivity.java <<'EOF'
+          package com.familyos.app;
+
+          import android.Manifest;
+          import android.app.Activity;
+          import android.content.pm.PackageManager;
+          import android.graphics.Color;
+          import android.graphics.Typeface;
+          import android.os.Bundle;
+          import android.view.Gravity;
+          import android.view.View;
+          import android.view.ViewGroup;
+          import android.widget.Button;
+          import android.widget.EditText;
+          import android.widget.HorizontalScrollView;
+          import android.widget.LinearLayout;
+          import android.widget.ScrollView;
+          import android.widget.TextView;
+          import android.widget.Toast;
+          import java.util.Locale;
+
+          public class MainActivity extends Activity {
+              private LinearLayout content;
+              private final int accent = Color.rgb(63,111,245);
+              private final int text = Color.rgb(22,25,31);
+              private final int muted = Color.rgb(105,112,124);
+              private final int bg = Color.rgb(246,247,248);
+              private final int line = Color.rgb(226,229,234);
+              private final int danger = Color.rgb(205,48,48);
+
+              @Override public void onCreate(Bundle b) {
+                  super.onCreate(b);
+                  renderShell();
+                  showToday();
+              }
+
+              private int dp(int v) {
+                  return (int)(v * getResources().getDisplayMetrics().density + .5f);
+              }
+
+              private TextView label(String value, int size, int color, boolean bold) {
+                  TextView t = new TextView(this);
+                  t.setText(value);
+                  t.setTextSize(size);
+                  t.setTextColor(color);
+                  if (bold) t.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+                  return t;
+              }
+
+              private void renderShell() {
+                  LinearLayout root = new LinearLayout(this);
+                  root.setOrientation(LinearLayout.VERTICAL);
+                  root.setBackgroundColor(bg);
+
+                  ScrollView scroll = new ScrollView(this);
+                  content = new LinearLayout(this);
+                  content.setOrientation(LinearLayout.VERTICAL);
+                  content.setPadding(dp(18), dp(22), dp(18), dp(110));
+                  scroll.addView(content, new ScrollView.LayoutParams(
+                          ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                  root.addView(scroll, new LinearLayout.LayoutParams(
+                          ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+
+                  HorizontalScrollView navScroll = new HorizontalScrollView(this);
+                  navScroll.setHorizontalScrollBarEnabled(false);
+                  navScroll.setBackgroundColor(Color.WHITE);
+                  LinearLayout nav = new LinearLayout(this);
+                  nav.setOrientation(LinearLayout.HORIZONTAL);
+                  nav.setPadding(dp(8), dp(8), dp(8), dp(8));
+
+                  addNav(nav, "Today", this::showToday, false);
+                  addNav(nav, "Family", this::showFamily, false);
+                  addNav(nav, "Map", this::showMap, false);
+                  addNav(nav, "Home", this::showHome, false);
+                  addNav(nav, "Plan", this::showPlan, false);
+                  addNav(nav, "AI", this::showAI, false);
+                  addNav(nav, "SOS", this::showSOS, true);
+
+                  navScroll.addView(nav);
+                  root.addView(navScroll, new LinearLayout.LayoutParams(
+                          ViewGroup.LayoutParams.MATCH_PARENT, dp(68)));
+                  setContentView(root);
+              }
+
+              private void addNav(LinearLayout nav, String title, Runnable action, boolean red) {
+                  Button b = new Button(this);
+                  b.setText(title);
+                  b.setAllCaps(false);
+                  b.setTextColor(red ? danger : text);
+                  b.setTextSize(13);
+                  b.setBackgroundColor(Color.TRANSPARENT);
+                  b.setOnClickListener(v -> action.run());
+                  nav.addView(b, new LinearLayout.LayoutParams(dp(82), dp(52)));
+              }
+
+              private void clear(String title, String subtitle) {
+                  content.removeAllViews();
+                  TextView kicker = label("FAMILY OS · V3 PROTOTYPE", 11, accent, true);
+                  kicker.setLetterSpacing(.12f);
+                  content.addView(kicker);
+                  TextView h = label(title, 32, text, true);
+                  h.setPadding(0, dp(5), 0, dp(4));
+                  content.addView(h);
+                  TextView s = label(subtitle, 15, muted, false);
+                  s.setPadding(0, 0, 0, dp(16));
+                  content.addView(s);
+              }
+
+              private void section(String title) {
+                  TextView s = label(title, 18, text, true);
+                  s.setPadding(0, dp(18), 0, dp(8));
+                  content.addView(s);
+              }
+
+              private void tip(String title, String body) {
+                  LinearLayout box = box(Color.rgb(232,238,255));
+                  TextView h = label(title, 14, accent, true);
+                  TextView b = label(body, 13, muted, false);
+                  b.setPadding(0, dp(4), 0, 0);
+                  box.addView(h);
+                  box.addView(b);
+                  content.addView(box);
+              }
+
+              private LinearLayout box(int color) {
+                  LinearLayout c = new LinearLayout(this);
+                  c.setOrientation(LinearLayout.VERTICAL);
+                  c.setPadding(dp(16), dp(14), dp(16), dp(14));
+                  c.setBackgroundColor(color);
+                  LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                          ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                  p.setMargins(0, dp(5), 0, dp(7));
+                  c.setLayoutParams(p);
+                  return c;
+              }
+
+              private void card(String title, String detail) {
+                  LinearLayout c = box(Color.WHITE);
+                  TextView h = label(title, 16, text, true);
+                  TextView d = label(detail, 13, muted, false);
+                  d.setPadding(0, dp(5), 0, 0);
+                  c.addView(h);
+                  c.addView(d);
+                  content.addView(c);
+              }
+
+              private Button primary(String title) {
+                  Button b = new Button(this);
+                  b.setText(title);
+                  b.setAllCaps(false);
+                  b.setTextColor(Color.WHITE);
+                  b.setTextSize(15);
+                  b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+                  b.setBackgroundColor(accent);
+                  LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                          ViewGroup.LayoutParams.MATCH_PARENT, dp(52));
+                  p.setMargins(0, dp(10), 0, dp(8));
+                  b.setLayoutParams(p);
+                  return b;
+              }
+
+              private void showToday() {
+                  clear("Today", "Everything that needs attention, in one place.");
+                  tip("Small guidance", "Only important items appear here. Open the other sections when you need detail.");
+                  section("Family right now");
+                  card("Melissa · School", "Location shared · updated now · battery 76%");
+                  card("Theo · Football", "Location shared · updated now · battery 41%");
+                  section("Important today");
+                  card("15:20 · Pick up Theo", "Assigned to Sandra · High priority");
+                  card("19:00 · Medicine reminder", "Theo · Waiting for confirmation");
+                  section("Upcoming");
+                  card("Car service", "In 3 days · Family car");
+                  card("Mow the lawn", "In 5 days · Home maintenance");
+                  section("Shopping");
+                  card("8 items", "Milk · eggs · bread · fruit · detergent + 3");
+                  section("Family AI");
+                  card("Ask naturally", "“What do we need to do this week?”");
+              }
+
+              private void showFamily() {
+                  clear("Family", "Members, roles, permissions and children.");
+                  tip("Permissions", "Parents control who can see each child's location. Location sharing must be visible to the member.");
+                  card("Cem", "Parent · Admin");
+                  card("Sandra", "Parent · Admin");
+                  card("Melissa", "Child · Location sharing ON");
+                  card("Theo", "Child · Location sharing ON");
+                  section("Quick actions");
+                  card("Invite family member", "Send a secure family invitation.");
+                  card("Child permissions", "Location · SOS · Tasks · Calendar");
+              }
+
+              private void showMap() {
+                  clear("Family Map", "Location prototype for authorized family members.");
+                  tip("Privacy", "This test build does not perform hidden tracking. Production will require explicit consent and a visible sharing status.");
+                  card("Melissa", "School · updated now · battery 76%");
+                  card("Theo", "Football field · updated now · battery 41%");
+                  card("Sandra", "Location sharing off");
+                  section("Safe zones");
+                  card("Home", "Arrival and departure alerts");
+                  card("School", "Arrival and departure alerts");
+                  Button permission = primary("Test location permission");
+                  permission.setOnClickListener(v -> {
+                      if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                          Toast.makeText(this, "Location permission is already granted.", Toast.LENGTH_SHORT).show();
+                      } else {
+                          requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 101);
+                      }
+                  });
+                  content.addView(permission);
+              }
+
+              private void showHome() {
+                  clear("Home", "The family's house, shopping, cars, documents and maintenance.");
+                  tip("One home, one view", "Recurring maintenance can become automatic Family Rules later.");
+                  card("Shopping", "8 open items · shared in real time");
+                  card("Home maintenance", "Lawn in 5 days · smoke alarm in 24 days");
+                  card("Family car", "Service in 3 days · inspection in 8 days");
+                  card("Documents", "Insurance · warranties · school papers");
+                  card("Health reminders", "Medication and appointment reminders");
+              }
+
+              private void showPlan() {
+                  clear("Plan", "Calendar, tasks, travel and automation.");
+                  tip("Family Rules", "Example: when a child arrives at school, notify the selected parent.");
+                  section("Today");
+                  card("08:00 · School", "Melissa");
+                  card("15:20 · School pickup", "Theo · Sandra");
+                  card("18:00 · Football", "Theo");
+                  section("Rules");
+                  card("School arrival", "If Theo enters School safe zone → notify parents");
+                  card("Car service", "30 days before due date → create task");
+                  card("Lawn", "Every 14 days → create home task");
+              }
+
+              private void showAI() {
+                  clear("Family AI", "Create family actions with normal language.");
+                  tip("Example", "“Friday at 09:00 Sandra takes the car to service. Remind us one day and one hour before.”");
+                  EditText input = new EditText(this);
+                  input.setHint("Tell Family AI what you need...");
+                  input.setMinHeight(dp(110));
+                  input.setGravity(Gravity.TOP);
+                  input.setPadding(dp(14), dp(14), dp(14), dp(14));
+                  input.setBackgroundColor(Color.WHITE);
+                  content.addView(input, new LinearLayout.LayoutParams(
+                          ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                  Button run = primary("Interpret request");
+                  TextView result = label("", 14, text, false);
+                  result.setPadding(0, dp(8), 0, dp(8));
+                  run.setOnClickListener(v -> {
+                      String q = input.getText().toString().trim();
+                      if (q.isEmpty()) {
+                          Toast.makeText(this, "Write a request first.", Toast.LENGTH_SHORT).show();
+                      } else {
+                          result.setText("Prototype result:\n• Task created\n• Assigned to family member\n• Added to calendar\n• Reminder prepared\n\nLive AI will be connected in the backend phase.");
+                      }
+                  });
+                  content.addView(run);
+                  content.addView(result);
+              }
+
+              private void showSOS() {
+                  clear("Emergency", "Fast access for urgent family situations.");
+                  tip("Test mode", "This APK does not contact emergency services or family members. Long-press only demonstrates the intended interaction.");
+                  TextView warning = label("SOS", 48, danger, true);
+                  warning.setGravity(Gravity.CENTER);
+                  warning.setPadding(0, dp(35), 0, dp(12));
+                  content.addView(warning);
+                  Button sos = new Button(this);
+                  sos.setText("PRESS AND HOLD FOR SOS TEST");
+                  sos.setAllCaps(false);
+                  sos.setTextColor(Color.WHITE);
+                  sos.setTextSize(16);
+                  sos.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+                  sos.setBackgroundColor(danger);
+                  sos.setOnLongClickListener(v -> {
+                      Toast.makeText(this, "SOS test completed — no message was sent.", Toast.LENGTH_LONG).show();
+                      return true;
+                  });
+                  content.addView(sos, new LinearLayout.LayoutParams(
+                          ViewGroup.LayoutParams.MATCH_PARENT, dp(72)));
+                  section("Emergency information");
+                  card("Parents", "Cem · Sandra");
+                  card("Important medical information", "Production: protected with role-based access.");
+                  card("Last known child locations", "Production: available to authorized parents.");
+              }
+
+              @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+                  super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+                  if (requestCode == 101) {
+                      boolean ok = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+                      Toast.makeText(this, ok ? "Location permission granted." : "Location permission denied.", Toast.LENGTH_SHORT).show();
+                  }
+              }
+          }
+          EOF
+
+      - name: Build installable debug APK
+        working-directory: family-native
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Collect APK
+        run: |
+          mkdir -p output
+          cp family-native/app/build/outputs/apk/debug/app-debug.apk output/FamilyOS-V3-Test.apk
+          sha256sum output/FamilyOS-V3-Test.apk > output/SHA256.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FamilyOS-V3-Test-APK
+          path: |
+            output/FamilyOS-V3-Test.apk
+            output/SHA256.txt
+          if-no-files-found: error
+          retention-days: 7

@@ -37,6 +37,7 @@ const BORDER = "#DCE3EA";
 const TOOLS = [
   { key: "select", label: "Välj", icon: "↖" },
   { key: "wall", label: "Vägg", icon: "╱" },
+  { key: "measure", label: "Mått", icon: "↔" },
   { key: "door", label: "Dörr", icon: "⌜" },
   { key: "window", label: "Fönster", icon: "▭" },
   { key: "equipment", label: "Produkt", icon: "+" },
@@ -130,7 +131,7 @@ function PropertyPanel({
       <View style={styles.propertyEmpty}>
         <Text style={styles.propertyEmptyTitle}>Inget valt</Text>
         <Text style={styles.propertyEmptyText}>
-          Välj en vägg, öppning, anslutningspunkt eller produkt för att redigera den.
+          Välj en vägg, måttlinje, öppning, anslutningspunkt eller produkt för att redigera den.
         </Text>
       </View>
     );
@@ -138,7 +139,41 @@ function PropertyPanel({
 
   const removeSelected = () => {
     commit((state) => {
-      if (selected.kind === "wall") {
+      if (selected.kind === "dimension") {
+    const dimension = (editor.dimensions || []).find(
+      (item) => item.id === selected.id
+    );
+    if (!dimension) return null;
+
+    const dx = Math.abs(dimension.p2.x - dimension.p1.x);
+    const dy = Math.abs(dimension.p2.y - dimension.p1.y);
+    const length = Math.round(Math.max(dx, dy));
+
+    return (
+      <View style={styles.propertyCard}>
+        <View style={styles.propertyHeader}>
+          <View>
+            <Text style={styles.propertyTitle}>Måttlinje</Text>
+            <Text style={styles.propertySub}>
+              Avstånd {length} mm
+            </Text>
+          </View>
+          <Text style={styles.propertyBadge}>{length} mm</Text>
+        </View>
+
+        <Text style={styles.propertyHelp}>
+          Måttlinjen visar det verkliga avståndet mellan de två valda kanterna.
+          Skapa ett nytt mått om utrustningen eller väggen flyttas.
+        </Text>
+
+        <TouchableOpacity style={styles.dangerButton} onPress={removeSelected}>
+          <Text style={styles.dangerButtonText}>Ta bort mått</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (selected.kind === "wall") {
         return {
           ...state,
           walls: state.walls.filter((item) => item.id !== selected.id),
@@ -157,6 +192,15 @@ function PropertyPanel({
         return {
           ...state,
           utilities: state.utilities.filter((item) => item.id !== selected.id),
+        };
+      }
+
+      if (selected.kind === "dimension") {
+        return {
+          ...state,
+          dimensions: (state.dimensions || []).filter(
+            (item) => item.id !== selected.id
+          ),
         };
       }
 
@@ -450,6 +494,7 @@ export default function PaxPlanner() {
       walls: createRectangleWalls(6000, 4500, 150),
       openings: [],
       utilities: [],
+      dimensions: [],
       equipment: [],
     }),
     []

@@ -1,75 +1,83 @@
 import { useCallback, useState } from "react";
 
 export function useEditorHistory(initialState) {
-  const [present, setPresent] = useState(initialState);
-  const [past, setPast] = useState([]);
-  const [future, setFuture] = useState([]);
+  const [history, setHistory] = useState({
+    past: [],
+    present: initialState,
+    future: [],
+  });
 
   const commit = useCallback((nextOrUpdater) => {
-    setPresent((current) => {
+    setHistory((current) => {
       const next =
         typeof nextOrUpdater === "function"
-          ? nextOrUpdater(current)
+          ? nextOrUpdater(current.present)
           : nextOrUpdater;
 
-      if (next === current) return current;
+      if (next === current.present) return current;
 
-      setPast((items) => [...items.slice(-39), current]);
-      setFuture([]);
-      return next;
+      return {
+        past: [...current.past.slice(-39), current.present],
+        present: next,
+        future: [],
+      };
     });
   }, []);
 
   const replace = useCallback((nextOrUpdater) => {
-    setPresent((current) =>
-      typeof nextOrUpdater === "function"
-        ? nextOrUpdater(current)
-        : nextOrUpdater
-    );
+    setHistory((current) => ({
+      ...current,
+      present:
+        typeof nextOrUpdater === "function"
+          ? nextOrUpdater(current.present)
+          : nextOrUpdater,
+    }));
   }, []);
 
   const undo = useCallback(() => {
-    setPast((items) => {
-      if (!items.length) return items;
-      const previous = items[items.length - 1];
+    setHistory((current) => {
+      if (!current.past.length) return current;
 
-      setPresent((current) => {
-        setFuture((futureItems) => [current, ...futureItems.slice(0, 39)]);
-        return previous;
-      });
+      const previous = current.past[current.past.length - 1];
 
-      return items.slice(0, -1);
+      return {
+        past: current.past.slice(0, -1),
+        present: previous,
+        future: [current.present, ...current.future.slice(0, 39)],
+      };
     });
   }, []);
 
   const redo = useCallback(() => {
-    setFuture((items) => {
-      if (!items.length) return items;
-      const next = items[0];
+    setHistory((current) => {
+      if (!current.future.length) return current;
 
-      setPresent((current) => {
-        setPast((pastItems) => [...pastItems.slice(-39), current]);
-        return next;
-      });
+      const next = current.future[0];
 
-      return items.slice(1);
+      return {
+        past: [...current.past.slice(-39), current.present],
+        present: next,
+        future: current.future.slice(1),
+      };
     });
   }, []);
 
   const resetHistory = useCallback((nextState) => {
-    setPresent(nextState);
-    setPast([]);
-    setFuture([]);
+    setHistory({
+      past: [],
+      present: nextState,
+      future: [],
+    });
   }, []);
 
   return {
-    present,
+    present: history.present,
     commit,
     replace,
     undo,
     redo,
     resetHistory,
-    canUndo: past.length > 0,
-    canRedo: future.length > 0,
+    canUndo: history.past.length > 0,
+    canRedo: history.future.length > 0,
   };
 }

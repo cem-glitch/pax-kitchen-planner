@@ -61,8 +61,8 @@ jobs:
                   applicationId 'com.familyos.app'
                   minSdk 26
                   targetSdk 35
-                  versionCode 2
-                  versionName '0.2.0'
+                  versionCode 3
+                  versionName '0.3.0'
               }
 
               compileOptions {
@@ -139,6 +139,7 @@ jobs:
 
           public class MainActivity extends Activity {
               private LinearLayout content;
+              private LinearLayout bottomNav;
               private String lang;
               private String screen = "today";
 
@@ -254,30 +255,43 @@ jobs:
                   scroll.addView(content, new ScrollView.LayoutParams(-1,-2));
                   root.addView(scroll, new LinearLayout.LayoutParams(-1,0,1));
 
-                  LinearLayout nav = new LinearLayout(this);
-                  nav.setGravity(Gravity.CENTER);
-                  nav.setPadding(dp(4),dp(5),dp(4),dp(5));
-                  nav.setBackgroundColor(Color.WHITE);
-                  addNav(nav,"⌂",t("today"),()->showToday(),BLUE);
-                  addNav(nav,"👨‍👩‍👧",t("family"),()->showFamily(),GREEN);
-                  addNav(nav,"⌖",t("map"),()->showMap(),ORANGE);
-                  addNav(nav,"▦",t("home"),()->showHome(),PURPLE);
-                  addNav(nav,"✦",t("ai"),()->showAI(),BLUE);
-                  root.addView(nav,new LinearLayout.LayoutParams(-1,dp(72)));
+                  bottomNav = new LinearLayout(this);
+                  bottomNav.setGravity(Gravity.CENTER);
+                  bottomNav.setPadding(dp(7),dp(5),dp(7),dp(6));
+                  bottomNav.setBackgroundColor(Color.WHITE);
+                  bottomNav.setElevation(dp(14));
+                  renderNav();
+                  root.addView(bottomNav,new LinearLayout.LayoutParams(-1,dp(78)));
                   setContentView(root);
               }
 
-              private void addNav(LinearLayout row, String icon, String label, Runnable action, int color) {
+              private void renderNav() {
+                  if (bottomNav == null) return;
+                  bottomNav.removeAllViews();
+                  addNav(0,t("today"),"today",this::showToday,BLUE);
+                  addNav(1,t("family"),"family",this::showFamily,GREEN);
+                  addNav(2,t("map"),"map",this::showMap,ORANGE);
+                  addNav(3,t("home"),"home",this::showHome,PURPLE);
+                  addNav(4,t("ai"),"ai",this::showAI,BLUE);
+              }
+
+              private void addNav(int iconType, String label, String target, Runnable action, int color) {
+                  boolean selected = screen.equals(target);
                   LinearLayout c = new LinearLayout(this);
                   c.setOrientation(LinearLayout.VERTICAL);
                   c.setGravity(Gravity.CENTER);
-                  TextView i = txt(icon,22,color,true);
-                  TextView l = txt(label,10,MUTED,false);
+                  c.setPadding(dp(2),dp(2),dp(2),0);
+
+                  NavIcon icon = new NavIcon(this,iconType,color,selected);
+                  c.addView(icon,new LinearLayout.LayoutParams(dp(42),dp(38)));
+
+                  TextView l = txt(label,10,selected ? TEXT : MUTED,selected);
                   l.setGravity(Gravity.CENTER);
-                  c.addView(i);
-                  c.addView(l);
+                  l.setSingleLine(true);
+                  c.addView(l,new LinearLayout.LayoutParams(-1,dp(22)));
+
                   c.setOnClickListener(v->action.run());
-                  row.addView(c,new LinearLayout.LayoutParams(0,-1,1));
+                  bottomNav.addView(c,new LinearLayout.LayoutParams(0,-1,1));
               }
 
               private void header(String title) {
@@ -375,6 +389,7 @@ jobs:
 
               private void showToday() {
                   screen="today";
+                  renderNav();
                   header(t("hello"));
                   FamilyHero hero=new FamilyHero(this);
                   content.addView(hero,new LinearLayout.LayoutParams(-1,dp(190)));
@@ -404,6 +419,7 @@ jobs:
 
               private void showFamily() {
                   screen="family";
+                  renderNav();
                   header(t("members"));
                   visualCard("👨","Cem",t("parent")+" · Admin",BLUE);
                   visualCard("👩","Sandra",t("parent")+" · Admin",PURPLE);
@@ -418,6 +434,7 @@ jobs:
 
               private void showMap() {
                   screen="map";
+                  renderNav();
                   header(t("map"));
                   MapMock map=new MapMock(this);
                   content.addView(map,new LinearLayout.LayoutParams(-1,dp(300)));
@@ -444,6 +461,7 @@ jobs:
 
               private void showHome() {
                   screen="home";
+                  renderNav();
                   header(t("house"));
                   tileRow(
                       tile("🛒",t("shopping"),t("items8"),BLUE),
@@ -465,6 +483,7 @@ jobs:
 
               private void showAI() {
                   screen="ai";
+                  renderNav();
                   header("Family AI");
                   AIHero h=new AIHero(this);
                   content.addView(h,new LinearLayout.LayoutParams(-1,dp(175)));
@@ -515,6 +534,78 @@ jobs:
                       return true;
                   });
                   content.addView(sos);
+              }
+
+              public class NavIcon extends View {
+                  private final Paint p = new Paint(1);
+                  private final Path path = new Path();
+                  private final int type;
+                  private final int color;
+                  private final boolean selected;
+
+                  public NavIcon(Activity a,int type,int color,boolean selected){
+                      super(a);
+                      this.type=type;
+                      this.color=color;
+                      this.selected=selected;
+                      if(selected) setBackground(shape(mix(color,88),18));
+                  }
+
+                  @Override protected void onDraw(Canvas c){
+                      super.onDraw(c);
+                      float w=getWidth(), h=getHeight();
+                      float cx=w/2f, cy=h/2f;
+                      p.setColor(selected ? color : Color.rgb(118,124,136));
+                      p.setStyle(Paint.Style.STROKE);
+                      p.setStrokeWidth(dp(2));
+                      p.setStrokeCap(Paint.Cap.ROUND);
+                      p.setStrokeJoin(Paint.Join.ROUND);
+
+                      if(type==0){
+                          path.reset();
+                          path.moveTo(cx-dp(9),cy-dp(1));
+                          path.lineTo(cx,cy-dp(10));
+                          path.lineTo(cx+dp(9),cy-dp(1));
+                          path.moveTo(cx-dp(7),cy-dp(2));
+                          path.lineTo(cx-dp(7),cy+dp(9));
+                          path.lineTo(cx+dp(7),cy+dp(9));
+                          path.lineTo(cx+dp(7),cy-dp(2));
+                          c.drawPath(path,p);
+                          c.drawLine(cx-dp(2),cy+dp(9),cx-dp(2),cy+dp(3),p);
+                          c.drawLine(cx+dp(2),cy+dp(9),cx+dp(2),cy+dp(3),p);
+                      } else if(type==1){
+                          c.drawCircle(cx,cy-dp(5),dp(4),p);
+                          c.drawCircle(cx-dp(8),cy-dp(2),dp(3),p);
+                          c.drawCircle(cx+dp(8),cy-dp(2),dp(3),p);
+                          c.drawArc(cx-dp(7),cy, cx+dp(7),cy+dp(14),200,140,false,p);
+                          c.drawArc(cx-dp(14),cy+dp(2), cx-dp(3),cy+dp(12),205,125,false,p);
+                          c.drawArc(cx+dp(3),cy+dp(2), cx+dp(14),cy+dp(12),210,125,false,p);
+                      } else if(type==2){
+                          path.reset();
+                          path.moveTo(cx,cy+dp(11));
+                          path.cubicTo(cx-dp(2),cy+dp(7),cx-dp(8),cy+dp(2),cx-dp(8),cy-dp(4));
+                          path.cubicTo(cx-dp(8),cy-dp(10),cx-dp(4),cy-dp(13),cx,cy-dp(13));
+                          path.cubicTo(cx+dp(4),cy-dp(13),cx+dp(8),cy-dp(10),cx+dp(8),cy-dp(4));
+                          path.cubicTo(cx+dp(8),cy+dp(2),cx+dp(2),cy+dp(7),cx,cy+dp(11));
+                          c.drawPath(path,p);
+                          c.drawCircle(cx,cy-dp(4),dp(2),p);
+                      } else if(type==3){
+                          p.setStyle(Paint.Style.FILL);
+                          float q=dp(4);
+                          c.drawRoundRect(cx-dp(9),cy-dp(9),cx-dp(1),cy-dp(1),q,q,p);
+                          c.drawRoundRect(cx+dp(2),cy-dp(9),cx+dp(10),cy-dp(1),q,q,p);
+                          c.drawRoundRect(cx-dp(9),cy+dp(2),cx-dp(1),cy+dp(10),q,q,p);
+                          c.drawRoundRect(cx+dp(2),cy+dp(2),cx+dp(10),cy+dp(10),q,q,p);
+                      } else {
+                          p.setStyle(Paint.Style.STROKE);
+                          c.drawLine(cx,cy-dp(12),cx,cy+dp(12),p);
+                          c.drawLine(cx-dp(12),cy,cx+dp(12),cy,p);
+                          c.drawLine(cx-dp(8),cy-dp(8),cx+dp(8),cy+dp(8),p);
+                          c.drawLine(cx+dp(8),cy-dp(8),cx-dp(8),cy+dp(8),p);
+                          p.setStyle(Paint.Style.FILL);
+                          c.drawCircle(cx,cy,dp(3),p);
+                      }
+                  }
               }
 
               public class FamilyHero extends View {
@@ -595,14 +686,14 @@ jobs:
       - name: Collect APK
         run: |
           mkdir -p output
-          cp family-native/app/build/outputs/apk/debug/app-debug.apk output/FamilyOS-V3-Visual.apk
-          sha256sum output/FamilyOS-V3-Visual.apk > output/SHA256.txt
+          cp family-native/app/build/outputs/apk/debug/app-debug.apk output/FamilyOS-V3-Visual-Nav.apk
+          sha256sum output/FamilyOS-V3-Visual-Nav.apk > output/SHA256.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FamilyOS-V3-Visual-APK
+          name: FamilyOS-V3-Visual-Nav-APK
           path: |
-            output/FamilyOS-V3-Visual.apk
+            output/FamilyOS-V3-Visual-Nav.apk
             output/SHA256.txt
           if-no-files-found: error
           retention-days: 7

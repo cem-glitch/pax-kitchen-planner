@@ -4,6 +4,10 @@ on:
   push:
     branches: [ "main" ]
 
+concurrency:
+  group: android-apk-main
+  cancel-in-progress: true
+
 jobs:
   build-apk:
     runs-on: ubuntu-latest
@@ -30,9 +34,9 @@ jobs:
       - name: Collect APK
         run: |
           mkdir -p output
-          cp android/app/build/outputs/apk/release/app-release.apk output/PAX-Koksplanerare-V3.1.apk
+          cp android/app/build/outputs/apk/release/app-release.apk output/PAX-Koksplanerare-V3.2.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: PAX-Koksplanerare-V3.1-APK
-          path: output/PAX-Koksplanerare-V3.1.apk
+          name: PAX-Koksplanerare-V3.2-APK
+          path: output/PAX-Koksplanerare-V3.2.apk
           if-no-files-found: error

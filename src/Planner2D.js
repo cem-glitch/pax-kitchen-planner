@@ -110,6 +110,8 @@ function DraggableEquipment({
   onCommitMove,
 }) {
   const size = rotatedSize(item);
+  const footprintWidth = Math.max(6, size.w * scale);
+  const footprintDepth = Math.max(6, size.d * scale);
   const startX = item.x * scale;
   const startY = item.y * scale;
   const pan = useRef(new Animated.ValueXY({ x: startX, y: startY })).current;
@@ -221,11 +223,12 @@ function DraggableEquipment({
       pointerEvents={interactive ? "auto" : "none"}
       style={[
         styles.equipment,
+        item.estimated && styles.equipmentEstimated,
         item.locked && styles.equipmentLocked,
         selected && styles.equipmentSelected,
         {
-          width: Math.max(36, size.w * scale),
-          height: Math.max(30, size.d * scale),
+          width: footprintWidth,
+          height: footprintDepth,
           transform: pan.getTranslateTransform(),
         },
       ]}
@@ -242,8 +245,13 @@ function DraggableEquipment({
         </Text>
       )}
 
+      <View style={styles.frontIndicator} />
       <Text numberOfLines={1} style={styles.equipmentLabel}>
         {item.title}
+      </Text>
+      <Text numberOfLines={1} style={styles.equipmentSize}>
+        {size.w} × {size.d}
+        {item.estimated ? " ~" : ""}
       </Text>
     </Animated.View>
   );
@@ -1718,6 +1726,10 @@ const styles = StyleSheet.create({
     padding: 2,
     zIndex: 8,
   },
+  equipmentEstimated: {
+    borderStyle: "dashed",
+    borderColor: "#C58A22",
+  },
   equipmentLocked: {
     opacity: 0.82,
     borderStyle: "dashed",
@@ -1728,8 +1740,17 @@ const styles = StyleSheet.create({
     backgroundColor: "#EEF7FF",
   },
   equipmentImage: {
-    width: "74%",
-    height: "60%",
+    width: "62%",
+    height: "48%",
+  },
+  frontIndicator: {
+    position: "absolute",
+    left: "20%",
+    right: "20%",
+    bottom: 1,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: "#1677D2",
   },
   equipmentFallback: {
     fontSize: 13,
@@ -1738,9 +1759,16 @@ const styles = StyleSheet.create({
   },
   equipmentLabel: {
     width: "94%",
-    fontSize: 7,
+    fontSize: 6.5,
     color: "#263548",
     fontWeight: "700",
+    textAlign: "center",
+  },
+  equipmentSize: {
+    width: "96%",
+    fontSize: 6,
+    color: "#657589",
+    fontWeight: "800",
     textAlign: "center",
   },
   wallDragHandle: {

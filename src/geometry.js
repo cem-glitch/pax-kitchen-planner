@@ -182,3 +182,52 @@ export function entityAtPoint(point, editor, tolerance = 220) {
 
   return null;
 }
+
+
+export function snapEquipmentToWalls(item, walls, roomW, roomD, threshold = 160) {
+  const size = rotatedSize(item);
+  let best = { ...item };
+  let bestDistance = threshold + 1;
+
+  for (const wall of walls) {
+    const orientation = wallOrientation(wall);
+
+    if (orientation === "horizontal") {
+      const wy = wall.y1;
+      const options = [
+        { distance: Math.abs(item.y - wy), y: wy },
+        { distance: Math.abs(item.y + size.d - wy), y: wy - size.d },
+      ];
+
+      for (const option of options) {
+        if (
+          option.distance < bestDistance &&
+          option.y >= 0 &&
+          option.y + size.d <= roomD
+        ) {
+          best = { ...best, y: option.y };
+          bestDistance = option.distance;
+        }
+      }
+    } else {
+      const wx = wall.x1;
+      const options = [
+        { distance: Math.abs(item.x - wx), x: wx },
+        { distance: Math.abs(item.x + size.w - wx), x: wx - size.w },
+      ];
+
+      for (const option of options) {
+        if (
+          option.distance < bestDistance &&
+          option.x >= 0 &&
+          option.x + size.w <= roomW
+        ) {
+          best = { ...best, x: option.x };
+          bestDistance = option.distance;
+        }
+      }
+    }
+  }
+
+  return best;
+}

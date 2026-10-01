@@ -41,7 +41,7 @@ jobs:
         run: |
           ROOT="viab-v3-android"
           mkdir -p "$ROOT/app/src/main/java/se/vasterasindustri/viabservicebillager"
-          mkdir -p "$ROOT/app/src/main/assets" "$ROOT/app/src/main/res/drawable" "$ROOT/app/src/main/res/values"
+          mkdir -p "$ROOT/app/src/main/assets" "$ROOT/app/src/main/res/drawable" "$ROOT/app/src/main/res/values" "$ROOT/app/src/main/res/raw"
           cat > "$ROOT/settings.gradle.kts" <<'EOF'
           pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
           dependencyResolutionManagement {
@@ -68,8 +68,8 @@ jobs:
               applicationId = "se.vasterasindustri.viabservicebillager"
               minSdk = 26
               targetSdk = 35
-              versionCode = 4
-              versionName = "3.4"
+              versionCode = 5
+              versionName = "3.5"
             }
             buildTypes { release { isMinifyEnabled = false } }
             compileOptions {
@@ -95,6 +95,7 @@ jobs:
             <uses-permission android:name="android.permission.INTERNET"/>
             <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
             <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+            <uses-permission android:name="android.permission.VIBRATE"/>
             <uses-feature android:name="android.hardware.camera.any" android:required="false"/>
             <application
               android:allowBackup="true"
@@ -128,9 +129,28 @@ jobs:
               android:width="108dp" android:height="108dp"
               android:viewportWidth="108" android:viewportHeight="108">
             <path android:fillColor="#0B0B0B" android:pathData="M0,0h108v108h-108z"/>
-            <path android:fillColor="#168A45" android:pathData="M20,25h16l18,38 18,-38h16L61,83H47z"/>
+            <path android:fillColor="#19A457" android:pathData="M17,24h17l20,47 20,-47h17L62,88H46z"/>
+            <path android:fillColor="#FFFFFF" android:pathData="M69,61h21v17H69z"/>
+            <path android:fillColor="#0B0B0B" android:pathData="M73,65h13v9H73z"/>
+            <path android:fillColor="#FFFFFF" android:pathData="M70,29h3v22h-3zM76,29h2v22h-2zM82,29h4v22h-4zM90,29h2v22h-2z"/>
           </vector>
           EOF
+          python3 - <<'PY'
+          import wave, math, struct
+          path="viab-v3-android/app/src/main/res/raw/scan_beep.wav"
+          rate=44100
+          duration=0.16
+          freq=1180.0
+          frames=int(rate*duration)
+          with wave.open(path,"w") as w:
+              w.setnchannels(1)
+              w.setsampwidth(2)
+              w.setframerate(rate)
+              for i in range(frames):
+                  env=min(1.0,i/(rate*0.01))*min(1.0,(frames-i)/(rate*0.035))
+                  sample=int(0.62*32767*env*math.sin(2*math.pi*freq*i/rate))
+                  w.writeframesraw(struct.pack("<h",sample))
+          PY
           cat > "$ROOT/app/src/main/java/se/vasterasindustri/viabservicebillager/MainActivity.java" <<'EOF'
           package se.vasterasindustri.viabservicebillager;
           import android.Manifest;
@@ -140,10 +160,13 @@ jobs:
           import android.location.LocationListener;
           import android.location.LocationManager;
           import android.media.AudioManager;
+          import android.media.MediaPlayer;
           import android.media.ToneGenerator;
           import android.os.Bundle;
           import android.os.Handler;
           import android.os.Looper;
+          import android.os.VibrationEffect;
+          import android.os.Vibrator;
           import android.webkit.JavascriptInterface;
           import android.webkit.WebSettings;
           import android.webkit.WebView;
@@ -194,6 +217,10 @@ jobs:
                   i.setDesiredBarcodeFormats(IntentIntegrator.ALL_CODE_TYPES);
                   i.initiateScan();
                 });
+              }
+
+              @JavascriptInterface public void playScanFeedback() {
+                runOnUiThread(() -> playScanFeedbackNow());
               }
 
               @JavascriptInterface public void getLocation() {
@@ -263,11 +290,31 @@ jobs:
               }
             }
 
-            private void playScanTone() {
+            private void playScanFeedbackNow() {
+              boolean started = false;
               try {
-                ToneGenerator tone = new ToneGenerator(AudioManager.STREAM_NOTIFICATION, 90);
-                tone.startTone(ToneGenerator.TONE_PROP_BEEP, 140);
-                new Handler(Looper.getMainLooper()).postDelayed(tone::release, 220);
+                MediaPlayer mp = MediaPlayer.create(this, R.raw.scan_beep);
+                if (mp != null) {
+                  mp.setVolume(1.0f, 1.0f);
+                  mp.setOnCompletionListener(p -> { try { p.release(); } catch (Exception ignored) {} });
+                  mp.start();
+                  started = true;
+                }
+              } catch (Exception ignored) {}
+
+              if (!started) {
+                try {
+                  ToneGenerator tone = new ToneGenerator(AudioManager.STREAM_ALARM, 100);
+                  tone.startTone(ToneGenerator.TONE_PROP_BEEP2, 180);
+                  new Handler(Looper.getMainLooper()).postDelayed(tone::release, 260);
+                } catch (Exception ignored) {}
+              }
+
+              try {
+                Vibrator v = (Vibrator)getSystemService(VIBRATOR_SERVICE);
+                if (v != null && v.hasVibrator()) {
+                  v.vibrate(VibrationEffect.createOneShot(75, 180));
+                }
               } catch (Exception ignored) {}
             }
 
@@ -275,7 +322,6 @@ jobs:
               IntentResult result = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
               if (result != null) {
                 if (result.getContents() != null && webView != null) {
-                  playScanTone();
                   webView.evaluateJavascript("window.onNativeBarcode(" + JSONObject.quote(result.getContents()) + ")", null);
                 }
                 return;

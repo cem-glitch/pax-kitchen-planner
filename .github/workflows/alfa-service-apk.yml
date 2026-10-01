@@ -1,0 +1,44 @@
+name: Build ALFA Service APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "alfa-service-app" ]
+
+concurrency:
+  group: alfa-service-apk
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.13"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+      - name: Install dependencies
+        working-directory: alfa-service-app
+        run: |
+          npm install
+          npx expo install expo-image-picker expo-print expo-sharing @react-native-async-storage/async-storage
+      - name: Generate Android project
+        working-directory: alfa-service-app
+        run: npx expo prebuild --platform android --clean --non-interactive
+      - name: Build release APK
+        working-directory: alfa-service-app/android
+        env:
+          NODE_ENV: production
+        run: ./gradlew assembleRelease
+      - name: Collect APK
+        run: |
+          mkdir -p output
+          cp alfa-service-app/android/app/build/outputs/apk/release/app-release.apk output/ALFA-Service-v0.1.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ALFA-Service-v0.1-APK
+          path: output/ALFA-Service-v0.1.apk
+          if-no-files-found: error

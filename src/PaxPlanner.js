@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import Planner2D from "./Planner2D";
 import Planner3D from "./Planner3D";
+import AIRenderScreen from "./AIRenderScreen";
 import {
   createRectangleWalls,
   clampEquipment,
@@ -139,41 +140,7 @@ function PropertyPanel({
 
   const removeSelected = () => {
     commit((state) => {
-      if (selected.kind === "dimension") {
-    const dimension = (editor.dimensions || []).find(
-      (item) => item.id === selected.id
-    );
-    if (!dimension) return null;
-
-    const dx = Math.abs(dimension.p2.x - dimension.p1.x);
-    const dy = Math.abs(dimension.p2.y - dimension.p1.y);
-    const length = Math.round(Math.max(dx, dy));
-
-    return (
-      <View style={styles.propertyCard}>
-        <View style={styles.propertyHeader}>
-          <View>
-            <Text style={styles.propertyTitle}>Måttlinje</Text>
-            <Text style={styles.propertySub}>
-              Avstånd {length} mm
-            </Text>
-          </View>
-          <Text style={styles.propertyBadge}>{length} mm</Text>
-        </View>
-
-        <Text style={styles.propertyHelp}>
-          Måttlinjen visar det verkliga avståndet mellan de två valda kanterna.
-          Skapa ett nytt mått om utrustningen eller väggen flyttas.
-        </Text>
-
-        <TouchableOpacity style={styles.dangerButton} onPress={removeSelected}>
-          <Text style={styles.dangerButtonText}>Ta bort mått</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  if (selected.kind === "wall") {
+      if (selected.kind === "wall") {
         return {
           ...state,
           walls: state.walls.filter((item) => item.id !== selected.id),
@@ -207,7 +174,9 @@ function PropertyPanel({
       if (selected.kind === "equipment") {
         return {
           ...state,
-          equipment: state.equipment.filter((item) => item.instanceId !== selected.id),
+          equipment: state.equipment.filter(
+            (item) => item.instanceId !== selected.id
+          ),
         };
       }
 
@@ -216,6 +185,37 @@ function PropertyPanel({
 
     setSelected(null);
   };
+
+  if (selected.kind === "dimension") {
+    const dimension = (editor.dimensions || []).find(
+      (item) => item.id === selected.id
+    );
+    if (!dimension) return null;
+
+    const dx = Math.abs(dimension.p2.x - dimension.p1.x);
+    const dy = Math.abs(dimension.p2.y - dimension.p1.y);
+    const length = Math.round(Math.max(dx, dy));
+
+    return (
+      <View style={styles.propertyCard}>
+        <View style={styles.propertyHeader}>
+          <View>
+            <Text style={styles.propertyTitle}>Måttlinje</Text>
+            <Text style={styles.propertySub}>Avstånd {length} mm</Text>
+          </View>
+          <Text style={styles.propertyBadge}>{length} mm</Text>
+        </View>
+
+        <Text style={styles.propertyHelp}>
+          Måttlinjen visar avståndet mellan de två valda kanterna.
+        </Text>
+
+        <TouchableOpacity style={styles.dangerButton} onPress={removeSelected}>
+          <Text style={styles.dangerButtonText}>Ta bort mått</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   if (selected.kind === "wall") {
     const wall = editor.walls.find((item) => item.id === selected.id);
@@ -266,7 +266,7 @@ function PropertyPanel({
         </View>
 
         <Text style={styles.propertyHelp}>
-          I Välj-läget kan väggens blå ändpunkter dras. Väggen låses automatiskt till 90°.
+          Dra mitt på väggen för att flytta den. Dra de blå ändpunkterna för att ändra längden.
         </Text>
 
         <TouchableOpacity style={styles.dangerButton} onPress={removeSelected}>
@@ -298,9 +298,7 @@ function PropertyPanel({
       commit((state) => ({
         ...state,
         openings: state.openings.map((item) =>
-          item.id === opening.id
-            ? { ...item, flip: !item.flip }
-            : item
+          item.id === opening.id ? { ...item, flip: !item.flip } : item
         ),
       }));
     };
@@ -750,6 +748,7 @@ export default function PaxPlanner() {
           {[
             ["plan", "2D Ritning"],
             ["3d", "3D Vy"],
+            ["ai", "AI Render"],
             ["list", "Projekt"],
           ].map(([key, label]) => (
             <TouchableOpacity
@@ -978,6 +977,17 @@ export default function PaxPlanner() {
                 </View>
               </View>
             </>
+          )}
+
+          {tab === "ai" && (
+            <AIRenderScreen
+              projectName={projectName}
+              customerName={customerName}
+              roomW={roomW}
+              roomD={roomD}
+              roomH={roomH}
+              editor={editor}
+            />
           )}
 
           {tab === "list" && (
@@ -1210,7 +1220,7 @@ const styles = StyleSheet.create({
   },
   tabText: {
     color: "#748294",
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: "800",
   },
   tabTextActive: {

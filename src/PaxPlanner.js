@@ -16,6 +16,7 @@ import {
 import Planner2D from "./Planner2D";
 import Planner3D from "./Planner3D";
 import AIRenderScreen from "./AIRenderScreen";
+import { createAutoDimensions } from "./autoDimensions";
 import {
   createRectangleWalls,
   clampEquipment,
@@ -474,6 +475,7 @@ export default function PaxPlanner() {
   const [splash, setSplash] = useState(true);
   const [tab, setTab] = useState("plan");
   const [tool, setTool] = useState("select");
+  const [showAutoDimensions, setShowAutoDimensions] = useState(false);
   const [wallDraft, setWallDraft] = useState(null);
   const [selected, setSelected] = useState(null);
 
@@ -548,6 +550,14 @@ export default function PaxPlanner() {
     );
     return ["Alla", ...all.slice(0, 18)];
   }, [products]);
+
+  const autoDimensions = useMemo(
+    () =>
+      showAutoDimensions
+        ? createAutoDimensions(editor, roomW, roomD)
+        : [],
+    [showAutoDimensions, editor, roomW, roomD]
+  );
 
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -837,7 +847,25 @@ export default function PaxPlanner() {
           {tab === "plan" && (
             <>
               <View style={styles.toolbarCard}>
-                <Text style={styles.cardEyebrow}>VERKTYG</Text>
+                <View style={styles.toolbarHeaderRow}>
+                  <Text style={styles.cardEyebrow}>VERKTYG</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowAutoDimensions((value) => !value)}
+                    style={[
+                      styles.autoMeasureButton,
+                      showAutoDimensions && styles.autoMeasureButtonActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.autoMeasureText,
+                        showAutoDimensions && styles.autoMeasureTextActive,
+                      ]}
+                    >
+                      {showAutoDimensions ? "✓ Alla mått" : "↔ Måttsätt allt"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -864,6 +892,7 @@ export default function PaxPlanner() {
                 wallDraft={wallDraft}
                 setWallDraft={setWallDraft}
                 commit={commit}
+                autoDimensions={autoDimensions}
               />
 
               <PropertyPanel
@@ -1355,6 +1384,32 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     paddingHorizontal: 12,
     marginBottom: 10,
+  },
+  toolbarHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  autoMeasureButton: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#CFE1F3",
+    backgroundColor: "#F4F9FE",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  autoMeasureButtonActive: {
+    backgroundColor: BLUE,
+    borderColor: BLUE,
+  },
+  autoMeasureText: {
+    color: BLUE,
+    fontSize: 9,
+    fontWeight: "900",
+  },
+  autoMeasureTextActive: {
+    color: "#FFFFFF",
   },
   tools: {
     gap: 7,

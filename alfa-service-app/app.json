@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "ALFA Service",
+    "slug": "alfa-service",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "se.vasterasindustri.alfaservice",
+      "versionCode": 1,
+      "permissions": ["CAMERA"]
+    },
+    "plugins": [
+      ["expo-image-picker", {"photosPermission": "Servicebilder används i ALFA-servicerapporten.", "cameraPermission": "Kameran används för att dokumentera servicearbetet."}]
+    ]
+  }
+}

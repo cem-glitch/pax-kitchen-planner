@@ -810,5 +810,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: VIAB-Servicebil-Lager-v3
-          path: viab-v3-output/VIAB-Servicebil-Lager-v3.apk
+          path: viab-v3-output/*.apk
           if-no-files-found: error

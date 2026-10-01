@@ -1,0 +1,42 @@
+name: Build VIAB Servicebil Lager iOS Simulator
+
+on:
+  push:
+    branches:
+      - viab-ios
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: viab-ios
+        run: xcodegen generate
+
+      - name: Build for iPhone Simulator
+        working-directory: viab-ios
+        run: |
+          set -o pipefail
+          xcodebuild             -project VIABServicebilLager.xcodeproj             -scheme VIABServicebilLager             -configuration Debug             -sdk iphonesimulator             -destination 'generic/platform=iOS Simulator'             -derivedDataPath build             CODE_SIGNING_ALLOWED=NO             build | tee xcodebuild.log
+
+      - name: Package simulator app
+        working-directory: viab-ios
+        run: |
+          mkdir -p output
+          APP="build/Build/Products/Debug-iphonesimulator/VIAB Servicebil Lager.app"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "output/VIAB-Servicebil-Lager-iOS-Simulator.zip"
+          zip -r "output/VIAB-Servicebil-Lager-iOS-Source.zip"             VIABServicebilLager.xcodeproj             VIABServicebilLager             project.yml             README.md
+
+      - name: Upload iOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: VIAB-Servicebil-Lager-iOS
+          path: viab-ios/output/*
+          if-no-files-found: error

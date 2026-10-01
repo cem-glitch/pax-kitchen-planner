@@ -68,8 +68,8 @@ jobs:
               applicationId = "se.vasterasindustri.viabservicebillager"
               minSdk = 26
               targetSdk = 35
-              versionCode = 7
-              versionName = "4.1"
+              versionCode = 8
+              versionName = "4.2"
             }
             buildTypes { release { isMinifyEnabled = false } }
             compileOptions {
@@ -105,6 +105,11 @@ jobs:
               android:label="VIAB Servicebil Lager"
               android:supportsRtl="true"
               android:theme="@style/AppTheme">
+              <activity
+                android:name=".PortraitCaptureActivity"
+                android:screenOrientation="portrait"
+                android:configChanges="orientation|screenSize"
+                android:exported="false"/>
               <activity android:name=".MainActivity" android:exported="true">
                 <intent-filter>
                   <action android:name="android.intent.action.MAIN"/>
@@ -214,7 +219,8 @@ jobs:
                   IntentIntegrator i = new IntentIntegrator(MainActivity.this);
                   i.setPrompt("Skanna streckkod");
                   i.setBeepEnabled(false);
-                  i.setOrientationLocked(false);
+                  i.setCaptureActivity(PortraitCaptureActivity.class);
+                  i.setOrientationLocked(true);
                   i.setDesiredBarcodeFormats(IntentIntegrator.ALL_CODE_TYPES);
                   i.initiateScan();
                 });
@@ -343,6 +349,20 @@ jobs:
                 return;
               }
               super.onActivityResult(requestCode, resultCode, data);
+            }
+          }
+          EOF
+          cat > "$ROOT/app/src/main/java/se/vasterasindustri/viabservicebillager/PortraitCaptureActivity.java" <<'EOF'
+          package se.vasterasindustri.viabservicebillager;
+
+          import android.content.pm.ActivityInfo;
+          import android.os.Bundle;
+          import com.journeyapps.barcodescanner.CaptureActivity;
+
+          public class PortraitCaptureActivity extends CaptureActivity {
+            @Override protected void onCreate(Bundle savedInstanceState) {
+              setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+              super.onCreate(savedInstanceState);
             }
           }
           EOF

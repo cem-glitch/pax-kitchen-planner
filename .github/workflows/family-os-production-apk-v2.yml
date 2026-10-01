@@ -1,0 +1,72 @@
+name: Family OS Production APK v2
+
+on:
+  push:
+    branches:
+      - family-os-apk-build
+    paths:
+      - 'family-os-build/production-ready.b64'
+      - '.github/workflows/family-os-production-apk-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_placeholder
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Restore production source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf family-os-production
+          base64 -d family-os-build/production-ready.b64 > /tmp/family-os-production.zip
+          unzip -q /tmp/family-os-production.zip -d .
+          test -f family-os-production/package.json
+
+      - name: Install dependencies
+        working-directory: family-os-production
+        run: npm install
+
+      - name: Type check
+        working-directory: family-os-production
+        run: npm run typecheck
+
+      - name: Generate Android project
+        working-directory: family-os-production
+        run: npx expo prebuild --platform android --non-interactive --clean
+
+      - name: Build debug APK
+        working-directory: family-os-production/android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Collect APK
+        run: |
+          mkdir -p output
+          cp family-os-production/android/app/build/outputs/apk/debug/app-debug.apk output/FamilyOS-Production-Test.apk
+          sha256sum output/FamilyOS-Production-Test.apk > output/SHA256.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FamilyOS-Production-Test-APK
+          path: |
+            output/FamilyOS-Production-Test.apk
+            output/SHA256.txt
+          if-no-files-found: error
+          retention-days: 7

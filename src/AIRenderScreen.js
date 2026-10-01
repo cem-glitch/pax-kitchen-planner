@@ -16,7 +16,10 @@ import {
   serializeScene,
   uniqueReferenceImages,
 } from "./sceneSerializer";
-import { generateKitchenRender } from "./renderService";
+import {
+  generateKitchenRender,
+  hasPaxRenderBackend,
+} from "./renderService";
 
 const BLUE = "#1677D2";
 const NAVY = "#0B1728";
@@ -60,7 +63,8 @@ function ChoiceRow({ items, value, onChange }) {
           <Text
             style={[
               styles.choiceText,
-              value === key && styles.choiceTextActive,
+              value === key &&
+                styles.choiceTextActive,
             ]}
           >
             {label}
@@ -71,9 +75,16 @@ function ChoiceRow({ items, value, onChange }) {
   );
 }
 
-function PlanReferencePreview({ roomW, roomD, editor }) {
+function PlanReferencePreview({
+  roomW,
+  roomD,
+  editor,
+}) {
   const width = 330;
-  const height = Math.max(220, Math.min(320, width * (roomD / roomW)));
+  const height = Math.max(
+    180,
+    Math.min(270, width * (roomD / roomW))
+  );
   const sx = width / roomW;
   const sy = height / roomD;
   const wallScale = Math.min(sx, sy);
@@ -82,16 +93,18 @@ function PlanReferencePreview({ roomW, roomD, editor }) {
     <View
       style={[
         styles.planCanvas,
-        {
-          width,
-          height,
-        },
+        { width, height },
       ]}
     >
       {(editor.walls || []).map((wall) => {
         const horizontal =
-          Math.abs(wall.x2 - wall.x1) >= Math.abs(wall.y2 - wall.y1);
-        const thickness = Math.max(2, Number(wall.thickness || 150) * wallScale);
+          Math.abs(wall.x2 - wall.x1) >=
+          Math.abs(wall.y2 - wall.y1);
+        const thickness = Math.max(
+          2,
+          Number(wall.thickness || 150) *
+            wallScale
+        );
 
         if (horizontal) {
           return (
@@ -99,9 +112,20 @@ function PlanReferencePreview({ roomW, roomD, editor }) {
               key={wall.id}
               style={{
                 position: "absolute",
-                left: Math.min(wall.x1, wall.x2) * sx,
-                top: wall.y1 * sy - thickness / 2,
-                width: Math.max(2, Math.abs(wall.x2 - wall.x1) * sx),
+                left:
+                  Math.min(
+                    wall.x1,
+                    wall.x2
+                  ) * sx,
+                top:
+                  wall.y1 * sy -
+                  thickness / 2,
+                width: Math.max(
+                  2,
+                  Math.abs(
+                    wall.x2 - wall.x1
+                  ) * sx
+                ),
                 height: thickness,
                 backgroundColor: "#243448",
               }}
@@ -114,37 +138,63 @@ function PlanReferencePreview({ roomW, roomD, editor }) {
             key={wall.id}
             style={{
               position: "absolute",
-              left: wall.x1 * sx - thickness / 2,
-              top: Math.min(wall.y1, wall.y2) * sy,
+              left:
+                wall.x1 * sx -
+                thickness / 2,
+              top:
+                Math.min(
+                  wall.y1,
+                  wall.y2
+                ) * sy,
               width: thickness,
-              height: Math.max(2, Math.abs(wall.y2 - wall.y1) * sy),
+              height: Math.max(
+                2,
+                Math.abs(
+                  wall.y2 - wall.y1
+                ) * sy
+              ),
               backgroundColor: "#243448",
             }}
           />
         );
       })}
 
-      {(editor.equipment || []).map((item, index) => {
-        const footprint = rotatedFootprint(item);
-        return (
-          <View
-            key={item.instanceId}
-            style={[
-              styles.planEquipment,
-              {
-                left: item.x * sx,
-                top: item.y * sy,
-                width: Math.max(5, footprint.w * sx),
-                height: Math.max(5, footprint.d * sy),
-              },
-            ]}
-          >
-            <Text numberOfLines={1} style={styles.planEquipmentText}>
-              {index + 1}
-            </Text>
-          </View>
-        );
-      })}
+      {(editor.equipment || []).map(
+        (item, index) => {
+          const footprint =
+            rotatedFootprint(item);
+
+          return (
+            <View
+              key={item.instanceId}
+              style={[
+                styles.planEquipment,
+                {
+                  left: item.x * sx,
+                  top: item.y * sy,
+                  width: Math.max(
+                    5,
+                    footprint.w * sx
+                  ),
+                  height: Math.max(
+                    5,
+                    footprint.d * sy
+                  ),
+                },
+              ]}
+            >
+              <Text
+                numberOfLines={1}
+                style={
+                  styles.planEquipmentText
+                }
+              >
+                {index + 1}
+              </Text>
+            </View>
+          );
+        }
+      )}
 
       <View style={styles.planLegend}>
         <Text style={styles.planLegendText}>
@@ -164,13 +214,25 @@ export default function AIRenderScreen({
   editor,
 }) {
   const previewRef = useRef(null);
-  const [apiKey, setApiKey] = useState("");
-  const [camera, setCamera] = useState("left_corner");
-  const [visualStyle, setVisualStyle] = useState("realistic");
-  const [quality, setQuality] = useState("medium");
-  const [rendering, setRendering] = useState(false);
-  const [renderUri, setRenderUri] = useState(null);
-  const [error, setError] = useState("");
+  const backendReady =
+    hasPaxRenderBackend();
+
+  const [apiKey, setApiKey] =
+    useState("");
+  const [showTestMode, setShowTestMode] =
+    useState(false);
+  const [camera, setCamera] =
+    useState("left_corner");
+  const [visualStyle, setVisualStyle] =
+    useState("realistic");
+  const [quality, setQuality] =
+    useState("medium");
+  const [rendering, setRendering] =
+    useState(false);
+  const [renderUri, setRenderUri] =
+    useState(null);
+  const [error, setError] =
+    useState("");
 
   const scene = useMemo(
     () =>
@@ -182,11 +244,19 @@ export default function AIRenderScreen({
         roomH,
         editor,
       }),
-    [projectName, customerName, roomW, roomD, roomH, editor]
+    [
+      projectName,
+      customerName,
+      roomW,
+      roomD,
+      roomH,
+      editor,
+    ]
   );
 
   const references = useMemo(
-    () => uniqueReferenceImages(scene, 12),
+    () =>
+      uniqueReferenceImages(scene, 12),
     [scene]
   );
 
@@ -195,29 +265,39 @@ export default function AIRenderScreen({
     setRendering(true);
 
     try {
-      const floorPlanBase64 = await captureRef(previewRef, {
-        format: "png",
-        quality: 1,
-        result: "base64",
-      });
+      const floorPlanBase64 =
+        await captureRef(previewRef, {
+          format: "png",
+          quality: 1,
+          result: "base64",
+        });
 
-      const prompt = buildRenderPrompt(
-        scene,
-        camera,
-        visualStyle
-      );
+      const prompt =
+        buildRenderPrompt(
+          scene,
+          camera,
+          visualStyle
+        );
 
-      const result = await generateKitchenRender({
-        apiKey,
-        prompt,
-        floorPlanBase64,
-        referenceImages: references,
-        quality,
-      });
+      const result =
+        await generateKitchenRender({
+          apiKey:
+            showTestMode
+              ? apiKey
+              : "",
+          prompt,
+          floorPlanBase64,
+          referenceImages:
+            references,
+          quality,
+        });
 
       setRenderUri(result.imageUri);
     } catch (e) {
-      setError(e?.message || "Renderingen misslyckades.");
+      setError(
+        e?.message ||
+          "Renderingen misslyckades."
+      );
     } finally {
       setRendering(false);
     }
@@ -226,33 +306,163 @@ export default function AIRenderScreen({
   return (
     <View>
       <View style={styles.hero}>
-        <Text style={styles.eyebrow}>PAX AI RENDER</Text>
-        <Text style={styles.heroTitle}>Fotorealistisk köksvy</Text>
+        <Text style={styles.eyebrow}>
+          PAX AI RENDER
+        </Text>
+        <Text style={styles.heroTitle}>
+          Fotorealistisk köksvy
+        </Text>
         <Text style={styles.heroText}>
-          Planens geometri och produktmått används som fasta referenser.
-          Produktbilder skickas med för att bevara modellernas utseende.
+          Planens geometri, verkliga
+          produktmått och produktbilder
+          används som referenser.
         </Text>
 
         <View style={styles.heroStats}>
           <View>
-            <Text style={styles.heroStatValue}>{editor.equipment.length}</Text>
-            <Text style={styles.heroStatLabel}>produkter</Text>
+            <Text
+              style={
+                styles.heroStatValue
+              }
+            >
+              {editor.equipment.length}
+            </Text>
+            <Text
+              style={
+                styles.heroStatLabel
+              }
+            >
+              produkter
+            </Text>
           </View>
+
           <View>
-            <Text style={styles.heroStatValue}>{editor.walls.length}</Text>
-            <Text style={styles.heroStatLabel}>väggar</Text>
+            <Text
+              style={
+                styles.heroStatValue
+              }
+            >
+              {editor.walls.length}
+            </Text>
+            <Text
+              style={
+                styles.heroStatLabel
+              }
+            >
+              väggar
+            </Text>
           </View>
+
           <View>
-            <Text style={styles.heroStatValue}>{references.length}</Text>
-            <Text style={styles.heroStatLabel}>bildreferenser</Text>
+            <Text
+              style={
+                styles.heroStatValue
+              }
+            >
+              {references.length}
+            </Text>
+            <Text
+              style={
+                styles.heroStatLabel
+              }
+            >
+              referenser
+            </Text>
           </View>
         </View>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Planreferens</Text>
+        <View
+          style={
+            styles.connectionHeader
+          }
+        >
+          <View style={{ flex: 1 }}>
+            <Text
+              style={
+                styles.cardTitle
+              }
+            >
+              PAX AI
+            </Text>
+            <Text
+              style={
+                styles.cardSub
+              }
+            >
+              {backendReady
+                ? "Säker PAX-server är ansluten. Ingen API-nyckel behövs i appen."
+                : "Säker PAX-server väntar på aktivering. Ritning och renderflöde är klara."}
+            </Text>
+          </View>
+
+          <View
+            style={[
+              styles.statusBadge,
+              backendReady
+                ? styles.statusReady
+                : styles.statusWaiting,
+            ]}
+          >
+            <Text
+              style={[
+                styles.statusText,
+                backendReady
+                  ? styles.statusReadyText
+                  : styles.statusWaitingText,
+              ]}
+            >
+              {backendReady
+                ? "KLAR"
+                : "VÄNTAR"}
+            </Text>
+          </View>
+        </View>
+
+        {!backendReady && (
+          <TouchableOpacity
+            style={styles.testToggle}
+            onPress={() =>
+              setShowTestMode(
+                (value) => !value
+              )
+            }
+          >
+            <Text
+              style={
+                styles.testToggleText
+              }
+            >
+              {showTestMode
+                ? "Dölj avancerat testläge"
+                : "Avancerat testläge"}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {!backendReady &&
+          showTestMode && (
+            <TextInput
+              value={apiKey}
+              onChangeText={setApiKey}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="OpenAI API-nyckel för tillfälligt test"
+              placeholderTextColor="#8B98A7"
+              style={styles.keyInput}
+            />
+          )}
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>
+          Planreferens
+        </Text>
         <Text style={styles.cardSub}>
-          Den här bilden skickas till AI:n som fast top-down referens.
+          Den här top-down bilden skickas
+          med som fast geometrireferens.
         </Text>
 
         <View
@@ -269,58 +479,65 @@ export default function AIRenderScreen({
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Kamera</Text>
+        <Text style={styles.cardTitle}>
+          Kamera
+        </Text>
         <ChoiceRow
           items={CAMERAS}
           value={camera}
           onChange={setCamera}
         />
 
-        <Text style={styles.settingLabel}>Stil</Text>
+        <Text
+          style={styles.settingLabel}
+        >
+          Stil
+        </Text>
         <ChoiceRow
           items={STYLES}
           value={visualStyle}
           onChange={setVisualStyle}
         />
 
-        <Text style={styles.settingLabel}>Kvalitet</Text>
+        <Text
+          style={styles.settingLabel}
+        >
+          Kvalitet
+        </Text>
         <ChoiceRow
           items={QUALITIES}
           value={quality}
           onChange={setQuality}
         />
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>AI-anslutning</Text>
-        <Text style={styles.cardSub}>
-          Testläge: nyckeln används endast för den här sessionen och sparas
-          inte i projektet eller appen.
-        </Text>
-
-        <TextInput
-          value={apiKey}
-          onChangeText={setApiKey}
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-          placeholder="OpenAI API-nyckel"
-          placeholderTextColor="#8B98A7"
-          style={styles.keyInput}
-        />
 
         <View style={styles.warning}>
-          <Text style={styles.warningTitle}>Produktbevarande</Text>
-          <Text style={styles.warningText}>
-            AI får planbilden plus upp till 12 unika produktbilder.
-            Exakt CAD-lik noggrannhet kan inte garanteras av en AI-render,
-            därför ska slutlig installation alltid följa 2D-måtten.
+          <Text
+            style={
+              styles.warningTitle
+            }
+          >
+            Produktbevarande
+          </Text>
+          <Text
+            style={
+              styles.warningText
+            }
+          >
+            AI får planbilden plus upp
+            till 12 unika
+            produktreferenser. Slutlig
+            installation ska alltid
+            följa 2D-måtten.
           </Text>
         </View>
 
         {!!error && (
           <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
+            <Text
+              style={styles.errorText}
+            >
+              {error}
+            </Text>
           </View>
         )}
 
@@ -329,40 +546,85 @@ export default function AIRenderScreen({
           onPress={render}
           style={[
             styles.renderButton,
-            rendering && styles.renderButtonDisabled,
+            rendering &&
+              styles.renderButtonDisabled,
           ]}
         >
           {rendering ? (
-            <View style={styles.renderingRow}>
-              <ActivityIndicator color="#FFFFFF" />
-              <Text style={styles.renderButtonText}>Renderar...</Text>
+            <View
+              style={
+                styles.renderingRow
+              }
+            >
+              <ActivityIndicator
+                color="#FFFFFF"
+              />
+              <Text
+                style={
+                  styles.renderButtonText
+                }
+              >
+                Renderar...
+              </Text>
             </View>
           ) : (
-            <Text style={styles.renderButtonText}>Generera AI-render</Text>
+            <Text
+              style={
+                styles.renderButtonText
+              }
+            >
+              Generera AI-render
+            </Text>
           )}
         </TouchableOpacity>
       </View>
 
       {renderUri && (
         <View style={styles.resultCard}>
-          <Text style={styles.resultEyebrow}>AI RESULTAT</Text>
-          <Text style={styles.resultTitle}>{projectName}</Text>
+          <Text
+            style={
+              styles.resultEyebrow
+            }
+          >
+            AI RESULTAT
+          </Text>
+          <Text
+            style={
+              styles.resultTitle
+            }
+          >
+            {projectName}
+          </Text>
+
           <Image
             source={{ uri: renderUri }}
             style={styles.resultImage}
             resizeMode="contain"
           />
-          <Text style={styles.resultNote}>
-            Kontrollera produktmodell, öppningar och fria mått mot 2D-ritningen
-            innan bilden används i ett kundunderlag.
+
+          <Text
+            style={
+              styles.resultNote
+            }
+          >
+            Kontrollera produktmodell,
+            öppningar och fria mått mot
+            2D-ritningen innan bilden
+            används som kundunderlag.
           </Text>
 
           <TouchableOpacity
-            style={styles.secondaryButton}
+            style={
+              styles.secondaryButton
+            }
             onPress={render}
             disabled={rendering}
           >
-            <Text style={styles.secondaryButtonText}>
+            <Text
+              style={
+                styles.secondaryButtonText
+              }
+            >
               Generera ny version
             </Text>
           </TouchableOpacity>
@@ -431,10 +693,57 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     marginTop: 3,
   },
+  connectionHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  statusBadge: {
+    borderRadius: 9,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  statusReady: {
+    backgroundColor: "#EAF7F0",
+  },
+  statusWaiting: {
+    backgroundColor: "#FFF5D9",
+  },
+  statusText: {
+    fontSize: 8,
+    fontWeight: "900",
+  },
+  statusReadyText: {
+    color: "#27734C",
+  },
+  statusWaitingText: {
+    color: "#8B6517",
+  },
+  testToggle: {
+    marginTop: 10,
+    alignSelf: "flex-start",
+    paddingVertical: 5,
+  },
+  testToggleText: {
+    color: "#748397",
+    fontSize: 9,
+    fontWeight: "800",
+  },
+  keyInput: {
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: "#DCE3EA",
+    borderRadius: 12,
+    backgroundColor: "#F8FAFB",
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    color: NAVY,
+    fontSize: 12,
+  },
   previewWrap: {
-    marginTop: 12,
+    marginTop: 10,
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: 7,
     backgroundColor: "#F4F6F8",
     borderRadius: 14,
   },
@@ -463,7 +772,8 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 6,
     bottom: 5,
-    backgroundColor: "rgba(255,255,255,0.88)",
+    backgroundColor:
+      "rgba(255,255,255,0.88)",
     paddingHorizontal: 6,
     paddingVertical: 3,
     borderRadius: 5,
@@ -505,19 +815,8 @@ const styles = StyleSheet.create({
   choiceTextActive: {
     color: BLUE,
   },
-  keyInput: {
-    marginTop: 11,
-    borderWidth: 1,
-    borderColor: "#DCE3EA",
-    borderRadius: 12,
-    backgroundColor: "#F8FAFB",
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    color: NAVY,
-    fontSize: 12,
-  },
   warning: {
-    marginTop: 10,
+    marginTop: 12,
     backgroundColor: "#FFF8E8",
     borderRadius: 12,
     borderWidth: 1,

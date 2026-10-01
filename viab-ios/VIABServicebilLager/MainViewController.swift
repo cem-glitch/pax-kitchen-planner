@@ -450,7 +450,7 @@ final class MainViewController: UIViewController,
     private func jsString(_ value: String) -> String {
         guard let data = try? JSONSerialization.data(withJSONObject: [value]),
               let array = String(data: data, encoding: .utf8),
-              array.count >= 2 else { return """" }
+              array.count >= 2 else { return "\"\"" }
         return String(array.dropFirst().dropLast())
     }
 

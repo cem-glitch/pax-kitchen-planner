@@ -78,6 +78,12 @@ jobs:
           }
           EOF
 
+          cat > "$ROOT/gradle.properties" <<'EOF'
+          android.useAndroidX=true
+          android.enableJetifier=true
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          EOF
+
           cat > "$ROOT/app/build.gradle.kts" <<'EOF'
           plugins {
               id("com.android.application")

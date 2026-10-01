@@ -159,8 +159,8 @@ jobs:
               <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
                   <item name="android:fontFamily">sans</item>
                   <item name="android:windowLightStatusBar">false</item>
-                  <item name="android:statusBarColor">#07111F</item>
-                  <item name="android:navigationBarColor">#07111F</item>
+                  <item name="android:statusBarColor">#0B0B0B</item>
+                  <item name="android:navigationBarColor">#0B0B0B</item>
                   <item name="android:windowActionModeOverlay">true</item>
               </style>
           </resources>
@@ -170,8 +170,8 @@ jobs:
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
               android:width="108dp" android:height="108dp"
               android:viewportWidth="108" android:viewportHeight="108">
-              <path android:fillColor="#07111F" android:pathData="M0,0h108v108h-108z"/>
-              <path android:fillColor="#2F80ED" android:pathData="M20,25h16l18,38 18,-38h16L61,83H47z"/>
+              <path android:fillColor="#0B0B0B" android:pathData="M0,0h108v108h-108z"/>
+              <path android:fillColor="#168A45" android:pathData="M20,25h16l18,38 18,-38h16L61,83H47z"/>
           </vector>
           EOF
 
@@ -388,16 +388,22 @@ jobs:
           </body></html>
           EOF
 
+      - name: Apply V2 application
+        run: |
+          cp viab-servicebil-lager-v2/index.html viab-servicebil-lager/android/app/src/main/assets/index.html
+          sed -i 's/versionCode = 1/versionCode = 2/' viab-servicebil-lager/android/app/build.gradle.kts
+          sed -i 's/versionName = "1.0"/versionName = "2.0"/' viab-servicebil-lager/android/app/build.gradle.kts
+
       - name: Build APK
         working-directory: viab-servicebil-lager/android
         run: |
           gradle --no-daemon :app:assembleDebug
           mkdir -p ../build-output
-          cp app/build/outputs/apk/debug/app-debug.apk ../build-output/VIAB-Servicebil-Lager-v1.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ../build-output/VIAB-Servicebil-Lager-v2.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: VIAB-Servicebil-Lager-v1
-          path: viab-servicebil-lager/build-output/VIAB-Servicebil-Lager-v1.apk
+          name: VIAB-Servicebil-Lager-v2
+          path: viab-servicebil-lager/build-output/VIAB-Servicebil-Lager-v2.apk
           if-no-files-found: error

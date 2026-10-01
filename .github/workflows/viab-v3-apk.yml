@@ -68,8 +68,8 @@ jobs:
               applicationId = "se.vasterasindustri.viabservicebillager"
               minSdk = 26
               targetSdk = 35
-              versionCode = 9
-              versionName = "4.3"
+              versionCode = 10
+              versionName = "5.0"
             }
             buildTypes { release { isMinifyEnabled = false } }
             compileOptions {
@@ -88,6 +88,7 @@ jobs:
             implementation("com.journeyapps:zxing-android-embedded:4.3.0")
             implementation("com.google.mlkit:text-recognition:16.0.1")
             implementation("com.google.mlkit:barcode-scanning:17.3.0")
+            implementation("androidx.biometric:biometric:1.1.0")
           }
           EOF
           cat > "$ROOT/app/src/main/AndroidManifest.xml" <<'EOF'
@@ -109,6 +110,11 @@ jobs:
               android:theme="@style/AppTheme">
               <activity
                 android:name=".PortraitCaptureActivity"
+                android:screenOrientation="portrait"
+                android:configChanges="orientation|screenSize"
+                android:exported="false"/>
+              <activity
+                android:name=".ContinuousScanActivity"
                 android:screenOrientation="portrait"
                 android:configChanges="orientation|screenSize"
                 android:exported="false"/>
@@ -171,8 +177,14 @@ jobs:
           import android.media.MediaPlayer;
           import android.media.ToneGenerator;
           import android.graphics.Bitmap;
+          import android.graphics.Color;
           import android.provider.MediaStore;
           import android.os.Bundle;
+          import android.content.SharedPreferences;
+          import android.print.PrintAttributes;
+          import android.print.PrintManager;
+          import android.text.TextUtils;
+          import android.util.Base64;
           import android.os.Handler;
           import android.os.Looper;
           import android.os.VibrationEffect;
@@ -180,23 +192,40 @@ jobs:
           import android.webkit.JavascriptInterface;
           import android.webkit.WebSettings;
           import android.webkit.WebView;
+          import android.webkit.WebViewClient;
           import androidx.appcompat.app.AppCompatActivity;
+          import androidx.biometric.BiometricManager;
+          import androidx.biometric.BiometricPrompt;
           import androidx.core.app.ActivityCompat;
           import androidx.core.content.ContextCompat;
           import androidx.webkit.WebViewAssetLoader;
           import androidx.webkit.WebViewClientCompat;
           import com.google.zxing.integration.android.IntentIntegrator;
           import com.google.zxing.integration.android.IntentResult;
+          import com.google.zxing.BarcodeFormat;
+          import com.google.zxing.MultiFormatWriter;
+          import com.google.zxing.common.BitMatrix;
           import com.google.mlkit.vision.common.InputImage;
           import com.google.mlkit.vision.text.TextRecognition;
           import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
           import com.google.mlkit.vision.barcode.BarcodeScanning;
           import com.google.mlkit.vision.barcode.common.Barcode;
           import java.util.List;
+          import java.util.concurrent.Executor;
+          import java.io.ByteArrayOutputStream;
+          import java.io.OutputStream;
           import org.json.JSONObject;
           public class MainActivity extends AppCompatActivity {
             private static final int REQ_LABEL_PHOTO = 77;
+            private static final int REQ_PRODUCT_PHOTO = 78;
+            private static final int REQ_CONTINUOUS_SCAN = 79;
+            private static final int REQ_SAVE_FILE = 80;
             private WebView webView;
+            private WebView printWebView;
+            private String pendingSaveContent;
+            private String pendingSaveMime;
+            private long lastPausedAt = 0L;
+            private boolean authenticating = false;
             @Override protected void onCreate(Bundle savedInstanceState) {
               super.onCreate(savedInstanceState);
               if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED
@@ -224,6 +253,20 @@ jobs:
               webView.addJavascriptInterface(new Bridge(), "Android");
               webView.loadUrl("https://appassets.androidplatform.net/assets/index.html");
             }
+            @Override protected void onPause() {
+              super.onPause();
+              if (!authenticating) lastPausedAt = System.currentTimeMillis();
+            }
+
+            @Override protected void onResume() {
+              super.onResume();
+              if (getSharedPreferences("viab_security", MODE_PRIVATE).getBoolean("app_lock", false)
+                  && lastPausedAt > 0
+                  && System.currentTimeMillis() - lastPausedAt > 60000L) {
+                new Handler(Looper.getMainLooper()).postDelayed(() -> promptAppLock(true, false), 250);
+              }
+            }
+
             public class Bridge {
               @JavascriptInterface public void scanBarcode() {
                 runOnUiThread(() -> {
@@ -235,6 +278,66 @@ jobs:
                   i.setDesiredBarcodeFormats(IntentIntegrator.ALL_CODE_TYPES);
                   i.initiateScan();
                 });
+              }
+
+              @JavascriptInterface public void startContinuousScan() {
+                runOnUiThread(() -> {
+                  try {
+                    startActivityForResult(new Intent(MainActivity.this, ContinuousScanActivity.class), REQ_CONTINUOUS_SCAN);
+                  } catch (Exception e) {
+                    if (webView != null) webView.evaluateJavascript("alert('Snabbskannern kunde inte öppnas.')", null);
+                  }
+                });
+              }
+
+              @JavascriptInterface public void captureArticlePhoto() {
+                runOnUiThread(() -> {
+                  try {
+                    Intent takePicture = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+                    if (takePicture.resolveActivity(getPackageManager()) != null) {
+                      startActivityForResult(takePicture, REQ_PRODUCT_PHOTO);
+                    } else {
+                      emitArticlePhotoError("Ingen kamera hittades.");
+                    }
+                  } catch (Exception e) {
+                    emitArticlePhotoError("Kameran kunde inte öppnas.");
+                  }
+                });
+              }
+
+              @JavascriptInterface public boolean isAppLockEnabled() {
+                return getSharedPreferences("viab_security", MODE_PRIVATE).getBoolean("app_lock", false);
+              }
+
+              @JavascriptInterface public void setAppLock(boolean enabled) {
+                runOnUiThread(() -> {
+                  if (!enabled) {
+                    getSharedPreferences("viab_security", MODE_PRIVATE).edit().putBoolean("app_lock", false).apply();
+                    emitAppLockChanged(false);
+                  } else {
+                    promptAppLock(false, true);
+                  }
+                });
+              }
+
+              @JavascriptInterface public void saveTextFile(String filename, String mimeType, String content) {
+                runOnUiThread(() -> {
+                  try {
+                    pendingSaveContent = content == null ? "" : content;
+                    pendingSaveMime = (mimeType == null || mimeType.isEmpty()) ? "text/plain" : mimeType;
+                    Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType(pendingSaveMime);
+                    intent.putExtra(Intent.EXTRA_TITLE, filename == null ? "VIAB-export.txt" : filename);
+                    startActivityForResult(intent, REQ_SAVE_FILE);
+                  } catch (Exception e) {
+                    if (webView != null) webView.evaluateJavascript("alert('Filen kunde inte sparas.')", null);
+                  }
+                });
+              }
+
+              @JavascriptInterface public void printArticleLabel(String articleNo, String articleName, String barcode, int packageQty) {
+                runOnUiThread(() -> printLabel(articleNo, articleName, barcode, packageQty));
               }
 
               @JavascriptInterface public void scanArticleLabel() {
@@ -386,6 +489,101 @@ jobs:
                 );
             }
 
+            private void emitArticlePhoto(String base64) {
+              if (webView != null) {
+                webView.evaluateJavascript("window.onNativeArticlePhoto(" + JSONObject.quote(base64) + ")", null);
+              }
+            }
+
+            private void emitArticlePhotoError(String message) {
+              if (webView != null) {
+                webView.evaluateJavascript("window.onNativeArticlePhotoError(" + JSONObject.quote(message) + ")", null);
+              }
+            }
+
+            private void emitAppLockChanged(boolean enabled) {
+              if (webView != null) {
+                webView.evaluateJavascript("if(window.onNativeAppLockChanged)window.onNativeAppLockChanged(" + enabled + ")", null);
+              }
+            }
+
+            private void promptAppLock(boolean enforce, boolean enableOnSuccess) {
+              if (authenticating) return;
+              final int auths = BiometricManager.Authenticators.BIOMETRIC_STRONG | BiometricManager.Authenticators.DEVICE_CREDENTIAL;
+              BiometricManager bm = BiometricManager.from(this);
+              if (bm.canAuthenticate(auths) != BiometricManager.BIOMETRIC_SUCCESS) {
+                if (enableOnSuccess) emitAppLockChanged(false);
+                if (enforce) finishAffinity();
+                return;
+              }
+
+              authenticating = true;
+              Executor executor = ContextCompat.getMainExecutor(this);
+              BiometricPrompt prompt = new BiometricPrompt(this, executor, new BiometricPrompt.AuthenticationCallback() {
+                @Override public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
+                  super.onAuthenticationSucceeded(result);
+                  authenticating = false;
+                  if (enableOnSuccess) {
+                    getSharedPreferences("viab_security", MODE_PRIVATE).edit().putBoolean("app_lock", true).apply();
+                    emitAppLockChanged(true);
+                  }
+                }
+                @Override public void onAuthenticationError(int errorCode, CharSequence errString) {
+                  super.onAuthenticationError(errorCode, errString);
+                  authenticating = false;
+                  if (enableOnSuccess) emitAppLockChanged(false);
+                  if (enforce) finishAffinity();
+                }
+              });
+
+              BiometricPrompt.PromptInfo info = new BiometricPrompt.PromptInfo.Builder()
+                .setTitle("VIAB Servicebil Lager")
+                .setSubtitle("Verifiera med biometri eller telefonens skärmlås")
+                .setAllowedAuthenticators(auths)
+                .build();
+              prompt.authenticate(info);
+            }
+
+            private void printLabel(String articleNo, String articleName, String barcode, int packageQty) {
+              try {
+                String code = (barcode == null || barcode.trim().isEmpty()) ? articleNo : barcode.trim();
+                BitMatrix matrix = new MultiFormatWriter().encode(code, BarcodeFormat.CODE_128, 900, 220);
+                Bitmap bmp = Bitmap.createBitmap(matrix.getWidth(), matrix.getHeight(), Bitmap.Config.ARGB_8888);
+                for (int y=0; y<matrix.getHeight(); y++) {
+                  for (int x=0; x<matrix.getWidth(); x++) bmp.setPixel(x,y,matrix.get(x,y)?Color.BLACK:Color.WHITE);
+                }
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                bmp.compress(Bitmap.CompressFormat.PNG, 100, baos);
+                String image64 = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP);
+                String safeNo = TextUtils.htmlEncode(articleNo == null ? "" : articleNo);
+                String safeName = TextUtils.htmlEncode(articleName == null ? "" : articleName);
+                String html = "<html><head><meta name='viewport' content='width=device-width,initial-scale=1'>"
+                  + "<style>@page{size:62mm 40mm;margin:0}body{margin:0;font-family:sans-serif;color:#111}"
+                  + ".l{width:62mm;height:40mm;box-sizing:border-box;padding:4mm;display:flex;flex-direction:column;justify-content:center;text-align:center}"
+                  + "h1{font-size:15pt;margin:0 0 1.5mm;font-weight:900}h2{font-size:10pt;margin:0 0 1mm}.b{width:100%;height:11mm;object-fit:fill}.c{font-size:9pt;font-weight:900;margin-top:1mm}.p{font-size:8pt;margin-top:.5mm}</style></head>"
+                  + "<body><div class='l'><h2>VIAB • ALFA ROBOT</h2><h1>"+safeName+"</h1><img class='b' src='data:image/png;base64,"+image64+"'>"
+                  + "<div class='c'>"+safeNo+"</div><div class='p'>Förpackning: "+Math.max(1,packageQty)+" st</div></div></body></html>";
+
+                printWebView = new WebView(this);
+                printWebView.getSettings().setJavaScriptEnabled(false);
+                printWebView.setWebViewClient(new WebViewClient() {
+                  @Override public void onPageFinished(WebView view, String url) {
+                    PrintManager pm = (PrintManager)getSystemService(PRINT_SERVICE);
+                    PrintAttributes.MediaSize labelSize = new PrintAttributes.MediaSize("VIAB_62X40","VIAB 62x40 mm",2441,1575);
+                    PrintAttributes attrs = new PrintAttributes.Builder()
+                      .setMediaSize(labelSize)
+                      .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+                      .setColorMode(PrintAttributes.COLOR_MODE_MONOCHROME)
+                      .build();
+                    pm.print("VIAB-"+safeNo, printWebView.createPrintDocumentAdapter("VIAB-"+safeNo), attrs);
+                  }
+                });
+                printWebView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null);
+              } catch (Exception e) {
+                if (webView != null) webView.evaluateJavascript("alert('Etiketten kunde inte skapas.')", null);
+              }
+            }
+
             private void playScanFeedbackNow() {
               boolean started = false;
               try {
@@ -418,14 +616,52 @@ jobs:
               if (requestCode == REQ_LABEL_PHOTO) {
                 if (resultCode == RESULT_OK && data != null && data.getExtras() != null) {
                   Object obj = data.getExtras().get("data");
-                  if (obj instanceof Bitmap) {
-                    processArticleLabelImage((Bitmap)obj);
-                  } else {
-                    emitArticleLabelError("Bilden kunde inte läsas.");
-                  }
+                  if (obj instanceof Bitmap) processArticleLabelImage((Bitmap)obj);
+                  else emitArticleLabelError("Bilden kunde inte läsas.");
                 } else if (resultCode != RESULT_CANCELED) {
                   emitArticleLabelError("Etiketten kunde inte fotograferas.");
                 }
+                return;
+              }
+
+              if (requestCode == REQ_PRODUCT_PHOTO) {
+                if (resultCode == RESULT_OK && data != null && data.getExtras() != null) {
+                  Object obj = data.getExtras().get("data");
+                  if (obj instanceof Bitmap) {
+                    Bitmap bm = (Bitmap)obj;
+                    int w=bm.getWidth(), h=bm.getHeight();
+                    if (Math.max(w,h)>1280) {
+                      float scale=1280f/Math.max(w,h);
+                      bm=Bitmap.createScaledBitmap(bm,Math.max(1,(int)(w*scale)),Math.max(1,(int)(h*scale)),true);
+                    }
+                    ByteArrayOutputStream out = new ByteArrayOutputStream();
+                    bm.compress(Bitmap.CompressFormat.JPEG, 86, out);
+                    emitArticlePhoto(Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP));
+                  } else emitArticlePhotoError("Produktbilden kunde inte läsas.");
+                }
+                return;
+              }
+
+              if (requestCode == REQ_CONTINUOUS_SCAN) {
+                if (resultCode == RESULT_OK && data != null && webView != null) {
+                  String codes = data.getStringExtra("codes");
+                  if (codes == null) codes = "[]";
+                  webView.evaluateJavascript("window.onNativeFastScan(" + JSONObject.quote(codes) + ")", null);
+                }
+                return;
+              }
+
+              if (requestCode == REQ_SAVE_FILE) {
+                if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                  try (OutputStream out = getContentResolver().openOutputStream(data.getData())) {
+                    if (out != null) out.write((pendingSaveContent == null ? "" : pendingSaveContent).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    if (webView != null) webView.evaluateJavascript("alert('Filen är sparad.')", null);
+                  } catch (Exception e) {
+                    if (webView != null) webView.evaluateJavascript("alert('Filen kunde inte sparas.')", null);
+                  }
+                }
+                pendingSaveContent = null;
+                pendingSaveMime = null;
                 return;
               }
 
@@ -454,13 +690,122 @@ jobs:
             }
           }
           EOF
+          cat > "$ROOT/app/src/main/java/se/vasterasindustri/viabservicebillager/ContinuousScanActivity.java" <<'EOF'
+          package se.vasterasindustri.viabservicebillager;
+
+          import android.content.Intent;
+          import android.graphics.Color;
+          import android.os.Bundle;
+          import android.os.VibrationEffect;
+          import android.os.Vibrator;
+          import android.media.AudioManager;
+          import android.media.ToneGenerator;
+          import android.view.Gravity;
+          import android.view.ViewGroup;
+          import android.widget.Button;
+          import android.widget.LinearLayout;
+          import android.widget.TextView;
+          import androidx.appcompat.app.AppCompatActivity;
+          import com.journeyapps.barcodescanner.BarcodeCallback;
+          import com.journeyapps.barcodescanner.BarcodeResult;
+          import com.journeyapps.barcodescanner.DecoratedBarcodeView;
+          import java.util.ArrayList;
+          import org.json.JSONArray;
+
+          public class ContinuousScanActivity extends AppCompatActivity {
+            private DecoratedBarcodeView barcodeView;
+            private TextView status;
+            private final ArrayList<String> codes = new ArrayList<>();
+            private String lastCode = "";
+            private long lastAt = 0L;
+
+            @Override protected void onCreate(Bundle savedInstanceState) {
+              super.onCreate(savedInstanceState);
+
+              LinearLayout root = new LinearLayout(this);
+              root.setOrientation(LinearLayout.VERTICAL);
+              root.setBackgroundColor(Color.BLACK);
+
+              status = new TextView(this);
+              status.setTextColor(Color.WHITE);
+              status.setTextSize(16f);
+              status.setGravity(Gravity.CENTER);
+              status.setPadding(16,18,16,18);
+              status.setText("Snabbskanning • 0 läsningar");
+
+              barcodeView = new DecoratedBarcodeView(this);
+              barcodeView.setStatusText("Skanna artiklar efter varandra. Varje godkänd läsning = +1.");
+              barcodeView.decodeContinuous(new BarcodeCallback() {
+                @Override public void barcodeResult(BarcodeResult result) {
+                  if (result == null || result.getText() == null) return;
+                  String code = result.getText().trim();
+                  if (code.isEmpty()) return;
+                  long now = System.currentTimeMillis();
+                  if (code.equals(lastCode) && now-lastAt < 650L) return;
+                  lastCode = code;
+                  lastAt = now;
+                  codes.add(code);
+                  status.setText("Snabbskanning • " + codes.size() + " läsningar");
+                  feedback();
+                }
+              });
+
+              Button done = new Button(this);
+              done.setText("Klar – visa korg");
+              done.setTextSize(16f);
+              done.setAllCaps(false);
+              done.setOnClickListener(v -> finishWithResult());
+
+              root.addView(status,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT));
+              root.addView(barcodeView,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f));
+              LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT);
+              bp.setMargins(18,12,18,22);
+              root.addView(done,bp);
+              setContentView(root);
+            }
+
+            private void feedback() {
+              try {
+                ToneGenerator tone = new ToneGenerator(AudioManager.STREAM_ALARM, 100);
+                tone.startTone(ToneGenerator.TONE_PROP_BEEP2, 120);
+                status.postDelayed(tone::release, 180);
+              } catch (Exception ignored) {}
+              try {
+                Vibrator v=(Vibrator)getSystemService(VIBRATOR_SERVICE);
+                if(v!=null&&v.hasVibrator())v.vibrate(VibrationEffect.createOneShot(55,160));
+              } catch (Exception ignored) {}
+            }
+
+            private void finishWithResult() {
+              Intent data = new Intent();
+              data.putExtra("codes", new JSONArray(codes).toString());
+              setResult(RESULT_OK,data);
+              finish();
+            }
+
+            @Override public void onBackPressed() {
+              finishWithResult();
+            }
+
+            @Override protected void onResume() {
+              super.onResume();
+              barcodeView.resume();
+            }
+
+            @Override protected void onPause() {
+              barcodeView.pause();
+              super.onPause();
+            }
+          }
+          EOF
           cp viab-servicebil-lager-v3/index.html "$ROOT/app/src/main/assets/index.html"
       - name: Build APK
         working-directory: viab-v3-android
         run: |
-          gradle --no-daemon :app:assembleDebug
+          gradle --no-daemon :app:assembleDebug :app:assembleRelease
           mkdir -p ../viab-v3-output
-          cp app/build/outputs/apk/debug/app-debug.apk ../viab-v3-output/VIAB-Servicebil-Lager-v3.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ../viab-v3-output/VIAB-Servicebil-Lager-V5.0-debug.apk
+          cp app/build/outputs/apk/release/app-release-unsigned.apk ../viab-v3-output/VIAB-Servicebil-Lager-V5.0-unsigned.apk
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:

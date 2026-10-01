@@ -1,0 +1,209 @@
+name: Build VIAB Servicebil Lager V3 APK
+
+on:
+  push:
+    branches:
+      - viab-apk-build
+    paths:
+      - ".github/workflows/viab-v3-apk.yml"
+      - "viab-servicebil-lager-v3/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Install Android SDK
+        run: |
+          set -e
+          ANDROID_HOME="$HOME/android-sdk"
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          curl -fsSL "https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip" -o /tmp/cmdline-tools.zip
+          mkdir -p /tmp/android-cmdline
+          unzip -q /tmp/cmdline-tools.zip -d /tmp/android-cmdline
+          mv /tmp/android-cmdline/cmdline-tools "$ANDROID_HOME/cmdline-tools/latest"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+      - name: Create project
+        run: |
+          ROOT="viab-v3-android"
+          mkdir -p "$ROOT/app/src/main/java/se/vasterasindustri/viabservicebillager"
+          mkdir -p "$ROOT/app/src/main/assets" "$ROOT/app/src/main/res/drawable" "$ROOT/app/src/main/res/values"
+          cat > "$ROOT/settings.gradle.kts" <<'EOF'
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement {
+            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            repositories { google(); mavenCentral() }
+          }
+          rootProject.name = "VIABServicebilLager"
+          include(":app")
+          EOF
+          cat > "$ROOT/build.gradle.kts" <<'EOF'
+          plugins { id("com.android.application") version "8.7.3" apply false }
+          EOF
+          cat > "$ROOT/gradle.properties" <<'EOF'
+          android.useAndroidX=true
+          android.enableJetifier=true
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          EOF
+          cat > "$ROOT/app/build.gradle.kts" <<'EOF'
+          plugins { id("com.android.application") }
+          android {
+            namespace = "se.vasterasindustri.viabservicebillager"
+            compileSdk = 35
+            defaultConfig {
+              applicationId = "se.vasterasindustri.viabservicebillager"
+              minSdk = 26
+              targetSdk = 35
+              versionCode = 3
+              versionName = "3.0"
+            }
+            buildTypes { release { isMinifyEnabled = false } }
+            compileOptions {
+              sourceCompatibility = JavaVersion.VERSION_17
+              targetCompatibility = JavaVersion.VERSION_17
+            }
+          }
+          configurations.all {
+            resolutionStrategy.eachDependency {
+              if (requested.group == "org.jetbrains.kotlin") useVersion("1.8.22")
+            }
+          }
+          dependencies {
+            implementation("androidx.appcompat:appcompat:1.7.0")
+            implementation("androidx.webkit:webkit:1.12.1")
+            implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+          }
+          EOF
+          cat > "$ROOT/app/src/main/AndroidManifest.xml" <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <uses-permission android:name="android.permission.CAMERA"/>
+            <uses-permission android:name="android.permission.INTERNET"/>
+            <uses-feature android:name="android.hardware.camera.any" android:required="false"/>
+            <application
+              android:allowBackup="true"
+              android:hardwareAccelerated="true"
+              android:icon="@drawable/ic_launcher"
+              android:roundIcon="@drawable/ic_launcher"
+              android:label="VIAB Servicebil Lager"
+              android:supportsRtl="true"
+              android:theme="@style/AppTheme">
+              <activity android:name=".MainActivity" android:exported="true">
+                <intent-filter>
+                  <action android:name="android.intent.action.MAIN"/>
+                  <category android:name="android.intent.category.LAUNCHER"/>
+                </intent-filter>
+              </activity>
+            </application>
+          </manifest>
+          EOF
+          cat > "$ROOT/app/src/main/res/values/styles.xml" <<'EOF'
+          <resources>
+            <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+              <item name="android:fontFamily">sans</item>
+              <item name="android:windowLightStatusBar">false</item>
+              <item name="android:statusBarColor">#0B0B0B</item>
+              <item name="android:navigationBarColor">#0B0B0B</item>
+            </style>
+          </resources>
+          EOF
+          cat > "$ROOT/app/src/main/res/drawable/ic_launcher.xml" <<'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp" android:height="108dp"
+              android:viewportWidth="108" android:viewportHeight="108">
+            <path android:fillColor="#0B0B0B" android:pathData="M0,0h108v108h-108z"/>
+            <path android:fillColor="#168A45" android:pathData="M20,25h16l18,38 18,-38h16L61,83H47z"/>
+          </vector>
+          EOF
+          cat > "$ROOT/app/src/main/java/se/vasterasindustri/viabservicebillager/MainActivity.java" <<'EOF'
+          package se.vasterasindustri.viabservicebillager;
+          import android.Manifest;
+          import android.content.Intent;
+          import android.content.pm.PackageManager;
+          import android.os.Bundle;
+          import android.webkit.JavascriptInterface;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import androidx.appcompat.app.AppCompatActivity;
+          import androidx.core.app.ActivityCompat;
+          import androidx.core.content.ContextCompat;
+          import androidx.webkit.WebViewAssetLoader;
+          import androidx.webkit.WebViewClientCompat;
+          import com.google.zxing.integration.android.IntentIntegrator;
+          import com.google.zxing.integration.android.IntentResult;
+          import org.json.JSONObject;
+          public class MainActivity extends AppCompatActivity {
+            private WebView webView;
+            @Override protected void onCreate(Bundle savedInstanceState) {
+              super.onCreate(savedInstanceState);
+              if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, 41);
+              }
+              webView = new WebView(this);
+              setContentView(webView);
+              WebSettings s = webView.getSettings();
+              s.setJavaScriptEnabled(true);
+              s.setDomStorageEnabled(true);
+              s.setAllowFileAccess(false);
+              s.setAllowContentAccess(false);
+              WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this)).build();
+              webView.setWebViewClient(new WebViewClientCompat() {
+                @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, android.webkit.WebResourceRequest request) {
+                  return loader.shouldInterceptRequest(request.getUrl());
+                }
+              });
+              webView.addJavascriptInterface(new Bridge(), "Android");
+              webView.loadUrl("https://appassets.androidplatform.net/assets/index.html");
+            }
+            public class Bridge {
+              @JavascriptInterface public void scanBarcode() {
+                runOnUiThread(() -> {
+                  IntentIntegrator i = new IntentIntegrator(MainActivity.this);
+                  i.setPrompt("Skanna streckkod");
+                  i.setBeepEnabled(true);
+                  i.setOrientationLocked(false);
+                  i.setDesiredBarcodeFormats(IntentIntegrator.ALL_CODE_TYPES);
+                  i.initiateScan();
+                });
+              }
+            }
+            @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+              IntentResult result = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
+              if (result != null) {
+                if (result.getContents() != null && webView != null) {
+                  webView.evaluateJavascript("window.onNativeBarcode(" + JSONObject.quote(result.getContents()) + ")", null);
+                }
+                return;
+              }
+              super.onActivityResult(requestCode, resultCode, data);
+            }
+          }
+          EOF
+          cp viab-servicebil-lager-v3/index.html "$ROOT/app/src/main/assets/index.html"
+      - name: Build APK
+        working-directory: viab-v3-android
+        run: |
+          gradle --no-daemon :app:assembleDebug
+          mkdir -p ../viab-v3-output
+          cp app/build/outputs/apk/debug/app-debug.apk ../viab-v3-output/VIAB-Servicebil-Lager-v3.apk
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: VIAB-Servicebil-Lager-v3
+          path: viab-v3-output/VIAB-Servicebil-Lager-v3.apk
+          if-no-files-found: error

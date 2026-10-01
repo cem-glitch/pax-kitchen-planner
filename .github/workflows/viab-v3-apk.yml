@@ -68,8 +68,8 @@ jobs:
               applicationId = "se.vasterasindustri.viabservicebillager"
               minSdk = 26
               targetSdk = 35
-              versionCode = 8
-              versionName = "4.2"
+              versionCode = 9
+              versionName = "4.3"
             }
             buildTypes { release { isMinifyEnabled = false } }
             compileOptions {
@@ -86,6 +86,8 @@ jobs:
             implementation("androidx.appcompat:appcompat:1.7.0")
             implementation("androidx.webkit:webkit:1.12.1")
             implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+            implementation("com.google.mlkit:text-recognition:16.0.1")
+            implementation("com.google.mlkit:barcode-scanning:17.3.0")
           }
           EOF
           cat > "$ROOT/app/src/main/AndroidManifest.xml" <<'EOF'
@@ -168,6 +170,8 @@ jobs:
           import android.media.AudioManager;
           import android.media.MediaPlayer;
           import android.media.ToneGenerator;
+          import android.graphics.Bitmap;
+          import android.provider.MediaStore;
           import android.os.Bundle;
           import android.os.Handler;
           import android.os.Looper;
@@ -183,8 +187,15 @@ jobs:
           import androidx.webkit.WebViewClientCompat;
           import com.google.zxing.integration.android.IntentIntegrator;
           import com.google.zxing.integration.android.IntentResult;
+          import com.google.mlkit.vision.common.InputImage;
+          import com.google.mlkit.vision.text.TextRecognition;
+          import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
+          import com.google.mlkit.vision.barcode.BarcodeScanning;
+          import com.google.mlkit.vision.barcode.common.Barcode;
+          import java.util.List;
           import org.json.JSONObject;
           public class MainActivity extends AppCompatActivity {
+            private static final int REQ_LABEL_PHOTO = 77;
             private WebView webView;
             @Override protected void onCreate(Bundle savedInstanceState) {
               super.onCreate(savedInstanceState);
@@ -223,6 +234,21 @@ jobs:
                   i.setOrientationLocked(true);
                   i.setDesiredBarcodeFormats(IntentIntegrator.ALL_CODE_TYPES);
                   i.initiateScan();
+                });
+              }
+
+              @JavascriptInterface public void scanArticleLabel() {
+                runOnUiThread(() -> {
+                  try {
+                    Intent takePicture = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+                    if (takePicture.resolveActivity(getPackageManager()) != null) {
+                      startActivityForResult(takePicture, REQ_LABEL_PHOTO);
+                    } else {
+                      emitArticleLabelError("Ingen kamera hittades.");
+                    }
+                  } catch (Exception e) {
+                    emitArticleLabelError("Kameran kunde inte öppnas.");
+                  }
                 });
               }
 
@@ -312,6 +338,54 @@ jobs:
               }
             }
 
+            private void emitArticleLabel(String rawText, String barcode) {
+              if (webView == null) return;
+              String js = "window.onNativeArticleLabel(" +
+                JSONObject.quote(rawText == null ? "" : rawText) + "," +
+                JSONObject.quote(barcode == null ? "" : barcode) + ")";
+              webView.evaluateJavascript(js, null);
+            }
+
+            private void emitArticleLabelError(String message) {
+              if (webView != null) {
+                webView.evaluateJavascript(
+                  "window.onNativeArticleLabelError(" + JSONObject.quote(message) + ")", null
+                );
+              }
+            }
+
+            private void processArticleLabelImage(Bitmap bitmap) {
+              if (bitmap == null) {
+                emitArticleLabelError("Ingen bild togs.");
+                return;
+              }
+
+              InputImage image = InputImage.fromBitmap(bitmap, 0);
+              TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+                .process(image)
+                .addOnSuccessListener(text -> {
+                  final String rawText = text.getText() == null ? "" : text.getText();
+                  BarcodeScanning.getClient()
+                    .process(image)
+                    .addOnSuccessListener(barcodes -> {
+                      String rawBarcode = "";
+                      if (barcodes != null) {
+                        for (Barcode b : barcodes) {
+                          if (b != null && b.getRawValue() != null && !b.getRawValue().trim().isEmpty()) {
+                            rawBarcode = b.getRawValue().trim();
+                            break;
+                          }
+                        }
+                      }
+                      emitArticleLabel(rawText, rawBarcode);
+                    })
+                    .addOnFailureListener(e -> emitArticleLabel(rawText, ""));
+                })
+                .addOnFailureListener(e ->
+                  emitArticleLabelError("Etiketttexten kunde inte läsas. Ta bilden närmare och försök igen.")
+                );
+            }
+
             private void playScanFeedbackNow() {
               boolean started = false;
               try {
@@ -341,6 +415,20 @@ jobs:
             }
 
             @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+              if (requestCode == REQ_LABEL_PHOTO) {
+                if (resultCode == RESULT_OK && data != null && data.getExtras() != null) {
+                  Object obj = data.getExtras().get("data");
+                  if (obj instanceof Bitmap) {
+                    processArticleLabelImage((Bitmap)obj);
+                  } else {
+                    emitArticleLabelError("Bilden kunde inte läsas.");
+                  }
+                } else if (resultCode != RESULT_CANCELED) {
+                  emitArticleLabelError("Etiketten kunde inte fotograferas.");
+                }
+                return;
+              }
+
               IntentResult result = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
               if (result != null) {
                 if (result.getContents() != null && webView != null) {

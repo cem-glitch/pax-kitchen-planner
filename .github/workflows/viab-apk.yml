@@ -1,0 +1,376 @@
+name: Build VIAB Servicebil Lager APK
+
+on:
+  push:
+    branches:
+      - viab-apk-build
+    paths:
+      - ".github/workflows/viab-apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Create Android project
+        shell: bash
+        run: |
+          set -e
+          ROOT="viab-servicebil-lager/android"
+          mkdir -p "$ROOT/app/src/main/java/se/vasterasindustri/viabservicebillager"
+          mkdir -p "$ROOT/app/src/main/assets"
+          mkdir -p "$ROOT/app/src/main/res/drawable"
+          mkdir -p "$ROOT/app/src/main/res/values"
+
+          cat > "$ROOT/settings.gradle.kts" <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "VIABServicebilLager"
+          include(":app")
+          EOF
+
+          cat > "$ROOT/build.gradle.kts" <<'EOF'
+          plugins {
+              id("com.android.application") version "8.7.3" apply false
+          }
+          EOF
+
+          cat > "$ROOT/app/build.gradle.kts" <<'EOF'
+          plugins {
+              id("com.android.application")
+          }
+
+          android {
+              namespace = "se.vasterasindustri.viabservicebillager"
+              compileSdk = 35
+
+              defaultConfig {
+                  applicationId = "se.vasterasindustri.viabservicebillager"
+                  minSdk = 26
+                  targetSdk = 35
+                  versionCode = 1
+                  versionName = "1.0"
+              }
+
+              buildTypes {
+                  release {
+                      isMinifyEnabled = false
+                  }
+              }
+
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+          }
+
+          dependencies {
+              implementation("androidx.appcompat:appcompat:1.7.0")
+              implementation("androidx.webkit:webkit:1.12.1")
+              implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+          }
+          EOF
+
+          cat > "$ROOT/app/src/main/AndroidManifest.xml" <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.CAMERA"/>
+              <uses-feature android:name="android.hardware.camera.any" android:required="false"/>
+              <application
+                  android:allowBackup="true"
+                  android:hardwareAccelerated="true"
+                  android:icon="@drawable/ic_launcher"
+                  android:roundIcon="@drawable/ic_launcher"
+                  android:label="VIAB Servicebil Lager"
+                  android:supportsRtl="true"
+                  android:theme="@style/AppTheme">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:screenOrientation="unspecified">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat > "$ROOT/app/src/main/res/values/styles.xml" <<'EOF'
+          <resources>
+              <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+                  <item name="android:fontFamily">sans</item>
+                  <item name="android:windowLightStatusBar">false</item>
+                  <item name="android:statusBarColor">#07111F</item>
+                  <item name="android:navigationBarColor">#07111F</item>
+                  <item name="android:windowActionModeOverlay">true</item>
+              </style>
+          </resources>
+          EOF
+
+          cat > "$ROOT/app/src/main/res/drawable/ic_launcher.xml" <<'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp" android:height="108dp"
+              android:viewportWidth="108" android:viewportHeight="108">
+              <path android:fillColor="#07111F" android:pathData="M0,0h108v108h-108z"/>
+              <path android:fillColor="#2F80ED" android:pathData="M20,25h16l18,38 18,-38h16L61,83H47z"/>
+          </vector>
+          EOF
+
+          cat > "$ROOT/app/src/main/java/se/vasterasindustri/viabservicebillager/MainActivity.java" <<'EOF'
+          package se.vasterasindustri.viabservicebillager;
+
+          import android.Manifest;
+          import android.content.pm.PackageManager;
+          import android.os.Bundle;
+          import android.webkit.JavascriptInterface;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import androidx.appcompat.app.AppCompatActivity;
+          import androidx.core.app.ActivityCompat;
+          import androidx.core.content.ContextCompat;
+          import androidx.webkit.WebViewAssetLoader;
+          import androidx.webkit.WebViewClientCompat;
+          import com.google.zxing.integration.android.IntentIntegrator;
+          import com.google.zxing.integration.android.IntentResult;
+          import android.content.Intent;
+          import org.json.JSONObject;
+
+          public class MainActivity extends AppCompatActivity {
+              private WebView webView;
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+
+                  if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                          != PackageManager.PERMISSION_GRANTED) {
+                      ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, 41);
+                  }
+
+                  webView = new WebView(this);
+                  setContentView(webView);
+
+                  WebSettings s = webView.getSettings();
+                  s.setJavaScriptEnabled(true);
+                  s.setDomStorageEnabled(true);
+                  s.setAllowFileAccess(false);
+                  s.setAllowContentAccess(false);
+
+                  WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
+                          .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+                          .build();
+
+                  webView.setWebViewClient(new WebViewClientCompat() {
+                      @Override
+                      public android.webkit.WebResourceResponse shouldInterceptRequest(
+                              WebView view, android.webkit.WebResourceRequest request) {
+                          return loader.shouldInterceptRequest(request.getUrl());
+                      }
+                  });
+
+                  webView.addJavascriptInterface(new Bridge(), "Android");
+                  webView.loadUrl("https://appassets.androidplatform.net/assets/index.html");
+              }
+
+              public class Bridge {
+                  @JavascriptInterface
+                  public void scanBarcode() {
+                      runOnUiThread(() -> {
+                          IntentIntegrator integrator = new IntentIntegrator(MainActivity.this);
+                          integrator.setPrompt("Skanna streckkod");
+                          integrator.setBeepEnabled(true);
+                          integrator.setOrientationLocked(false);
+                          integrator.setDesiredBarcodeFormats(IntentIntegrator.ALL_CODE_TYPES);
+                          integrator.initiateScan();
+                      });
+                  }
+              }
+
+              @Override
+              protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+                  IntentResult result = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
+                  if (result != null) {
+                      if (result.getContents() != null && webView != null) {
+                          String js = "window.onNativeBarcode(" + JSONObject.quote(result.getContents()) + ")";
+                          webView.evaluateJavascript(js, null);
+                      }
+                      return;
+                  }
+                  super.onActivityResult(requestCode, resultCode, data);
+              }
+
+              @Override
+              public void onBackPressed() {
+                  if (webView != null && webView.canGoBack()) webView.goBack();
+                  else super.onBackPressed();
+              }
+          }
+          EOF
+
+          cat > "$ROOT/app/src/main/assets/index.html" <<'EOF'
+          <!doctype html>
+          <html lang="sv">
+          <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+          <title>VIAB Servicebil Lager</title>
+          <style>
+          :root{--bg:#f3f6f9;--nav:#07111f;--blue:#2f80ed;--green:#41a85f;--red:#d94444;--text:#122033;--muted:#708090;--card:#fff;--line:#e5ebf1}
+          *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Arial,sans-serif}.app{max-width:720px;margin:auto;min-height:100vh;padding-bottom:92px}.top{background:linear-gradient(145deg,#07111f,#0f2744);padding:18px 18px 22px;color:white;position:sticky;top:0;z-index:5;box-shadow:0 8px 28px #07111f33}.brand{display:flex;align-items:center;gap:14px}.logo{width:82px;height:48px;border-radius:12px;background:white;display:grid;place-items:center;color:#07111f;font-weight:1000;font-size:24px;letter-spacing:-2px;border:2px solid #3da35b}.logo small{display:block;font-size:7px;letter-spacing:.1px;color:#3da35b;margin-top:-4px;text-align:center}.brand h1{font-size:19px;margin:0}.brand p{font-size:12px;margin:3px 0 0;color:#b7c6d9}.content{padding:16px}.hero{background:linear-gradient(135deg,#2f80ed,#175bb4);color:white;border-radius:22px;padding:20px;box-shadow:0 12px 30px #2f80ed33}.hero h2{margin:0 0 6px;font-size:24px}.hero p{margin:0;color:#eaf3ff}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}.card{background:white;border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 5px 20px #1720330d}.card h3{margin:0 0 9px;font-size:16px}.big{font-size:26px;font-weight:900}.muted{color:var(--muted);font-size:12px}.pill{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border-radius:99px;font-size:12px;font-weight:800}.open{background:#e7f7ec;color:#248845}.closed{background:#f4e8e8;color:#b43a3a}.btn{border:0;border-radius:14px;padding:13px 14px;font-weight:800;font-size:14px}.primary{background:var(--blue);color:white}.dark{background:var(--nav);color:white}.soft{background:#edf3fa;color:#27466b}.danger{background:#ffeded;color:#ba3535}.full{width:100%}.scan{margin-top:14px;padding:18px;border-radius:20px;background:#07111f;color:white;display:flex;align-items:center;justify-content:space-between}.scan .ico{width:54px;height:54px;border-radius:16px;background:#17395f;display:grid;place-items:center;font-size:28px}.section-title{display:flex;justify-content:space-between;align-items:end;margin:22px 2px 10px}.section-title h2{font-size:17px;margin:0}.row{display:flex;align-items:center;justify-content:space-between;gap:10px}.item{padding:13px 0;border-bottom:1px solid var(--line)}.item:last-child{border-bottom:0}.code{font-size:11px;color:var(--muted)}.qty{font-size:19px;font-weight:900}.tabs{position:fixed;bottom:0;left:0;right:0;max-width:720px;margin:auto;background:#07111f;display:grid;grid-template-columns:repeat(5,1fr);padding:8px 8px max(8px,env(safe-area-inset-bottom));z-index:10}.tab{background:none;border:0;color:#9fb0c4;font-size:11px;padding:8px 2px}.tab b{display:block;font-size:19px;margin-bottom:2px}.tab.active{color:white}.fab{width:54px;height:54px;background:#2f80ed;border-radius:18px;color:white;margin:-22px auto 0;display:grid;place-items:center;font-size:26px;box-shadow:0 8px 20px #2f80ed66}.page{display:none}.page.active{display:block}.field{margin:10px 0}.field label{display:block;font-size:12px;color:var(--muted);margin:0 0 5px}.field input,.field select{width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;background:white;font-size:14px}.avatar{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#2f80ed,#07111f);display:grid;place-items:center;color:white;font-weight:900;font-size:20px;border:4px solid white;box-shadow:0 4px 18px #0002}.notice{padding:12px;border-radius:12px;margin:10px 0;font-size:13px}.blue{background:#eaf3ff;color:#245892}.green{background:#e9f8ed;color:#257b3d}.red{background:#ffeded;color:#a83535}.adminbar{margin-top:14px;background:#fff;border-radius:18px;padding:14px;border:1px solid var(--line)}.adminbar .btn{margin-top:8px}.history{font-size:13px}.time{font-size:11px;color:var(--muted)}.modal{position:fixed;inset:0;background:#07111fbb;display:none;align-items:flex-end;z-index:20}.modal.show{display:flex}.sheet{background:white;width:100%;max-width:720px;margin:auto;border-radius:24px 24px 0 0;padding:18px;max-height:88vh;overflow:auto}.sheet h2{margin:0 0 12px}.close{float:right;border:0;background:#edf3fa;border-radius:12px;width:38px;height:38px;font-size:22px}.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.seg button{padding:12px;border:1px solid var(--line);border-radius:12px;background:white;font-weight:800}.seg button.sel{background:#07111f;color:white}.hidden{display:none!important}
+          </style>
+          </head>
+          <body>
+          <div class="app">
+            <header class="top">
+              <div class="brand">
+                <div class="logo">VI·AB<small>Västerås Industri AB</small></div>
+                <div><h1>Servicebil Lager</h1><p>Reservdelar • Uttag • Retur</p></div>
+              </div>
+            </header>
+
+            <main class="content">
+              <section id="home" class="page active">
+                <div class="hero"><h2>Servicebil 01</h2><p>Registreringsnummer: <b>ABC 123</b></p></div>
+                <div class="grid">
+                  <div class="card"><div class="muted">Lagersaldo</div><div class="big" id="totalQty">0</div><div class="muted">artiklar totalt</div></div>
+                  <div class="card"><div class="muted">Uttag</div><div id="gatePill" class="pill closed">Stängt</div><div class="muted" id="gateText" style="margin-top:8px">Administratör öppnar.</div></div>
+                </div>
+                <button class="scan" onclick="startScan()"><div><b style="font-size:18px">Skanna streckkod</b><div class="muted" style="color:#b7c6d9;margin-top:4px">Telefonkamera</div></div><div class="ico">⌗</div></button>
+                <div id="adminHome"></div>
+                <div class="section-title"><h2>Senaste händelser</h2><span class="muted">Idag</span></div>
+                <div class="card" id="recent"></div>
+              </section>
+
+              <section id="lager" class="page">
+                <div class="section-title"><h2>Lager • Servicebil 01</h2><span class="muted">ABC 123</span></div>
+                <div class="card" id="inventory"></div>
+              </section>
+
+              <section id="historik" class="page">
+                <div class="section-title"><h2>Historik</h2><span class="muted">Spårbara lagerhändelser</span></div>
+                <div class="card history" id="history"></div>
+              </section>
+
+              <section id="profil" class="page">
+                <div class="card">
+                  <div class="row"><div><h3 style="margin:0">Teknikerprofil</h3><div class="muted">VIAB personal</div></div><div class="avatar">AY</div></div>
+                  <div class="field"><label>Namn</label><input value="Ali Yılmaz" readonly></div>
+                  <div class="field"><label>Personnummer</label><input id="pn" value="900101-1234" readonly></div>
+                  <div class="field"><label>E-postadress</label><input value="ali@vasterasindustri.se" readonly></div>
+                  <div class="field"><label>Servicebil</label><input value="Servicebil 01 • ABC 123" readonly></div>
+                  <div class="field"><label>Roll (demo)</label><select id="roleSel" onchange="setRole(this.value)"><option value="admin">Administratör</option><option value="tech">Servicetekniker</option><option value="control">Kontrollant</option></select></div>
+                  <div class="notice blue">I produktionsversionen styrs rollen av inloggningen. Personnummer maskeras för obehöriga användare.</div>
+                </div>
+              </section>
+            </main>
+
+            <nav class="tabs">
+              <button class="tab active" onclick="go('home',this)"><b>⌂</b>Hem</button>
+              <button class="tab" onclick="go('lager',this)"><b>▦</b>Lager</button>
+              <button class="tab" onclick="startScan()"><span class="fab">⌗</span>Skanna</button>
+              <button class="tab" onclick="go('historik',this)"><b>↻</b>Historik</button>
+              <button class="tab" onclick="go('profil',this)"><b>○</b>Profil</button>
+            </nav>
+          </div>
+
+          <div class="modal" id="scanModal"><div class="sheet">
+            <button class="close" onclick="closeModal()">×</button><h2>Artikel</h2>
+            <div class="notice blue" id="scanInfo">Skanna streckkod eller ange artikelnummer.</div>
+            <div class="field"><label>Artikelnummer / streckkod</label><input id="manualCode" placeholder="ALFA-X-SENSOR"></div>
+            <button class="btn primary full" onclick="lookup(document.getElementById('manualCode').value)">Sök artikel</button>
+            <div id="found"></div>
+          </div></div>
+
+          <script>
+          const seedArticles=[
+            {code:'ALFA-X-SENSOR',name:'X-sensor',qty:5,min:2},
+            {code:'ALFA-Y-SENSOR',name:'Y induktiv sensor',qty:3,min:2},
+            {code:'ALFA-X-MOTOR',name:'X-motor',qty:1,min:1},
+            {code:'ALFA-D-MOTOR',name:'D-motor',qty:1,min:1},
+            {code:'ALFA-BLADE-MOTOR',name:'Knivmotor',qty:2,min:1},
+            {code:'ALFA-POWER-SUPPLY',name:'Nätaggregat',qty:2,min:1},
+            {code:'ALFA-PLC',name:'PLC',qty:1,min:1},
+            {code:'ALFA-SCREEN',name:'Display / HMI',qty:1,min:1}
+          ];
+          const today=()=>new Date().toISOString().slice(0,10);
+          let state=JSON.parse(localStorage.getItem('viabState')||'null')||{articles:seedArticles,history:[],role:'admin',gate:{type:'none',until:0}};
+          function save(){localStorage.setItem('viabState',JSON.stringify(state));render()}
+          function setRole(r){state.role=r;save()}
+          function go(id,btn){document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));if(btn)btn.classList.add('active')}
+          function gateOpen(type){return state.gate.type===type && state.gate.until>Date.now()}
+          function openGate(type){if(state.role!=='admin')return;state.gate={type:type,until:Date.now()+3600000};state.history.unshift({at:new Date().toISOString(),user:'Administratör',kind:'BEHÖRIGHET',code:'-',name:type==='out'?'Uttag öppnat 1 tim':'Inleverans öppnad 1 tim',qty:0});save()}
+          function closeGate(){if(state.role!=='admin')return;state.gate={type:'none',until:0};save()}
+          function startScan(){document.getElementById('scanModal').classList.add('show');document.getElementById('found').innerHTML='';document.getElementById('manualCode').value='';if(window.Android&&Android.scanBarcode){document.getElementById('scanInfo').textContent='Kameran öppnas för streckkodsskanning.';Android.scanBarcode()}else document.getElementById('scanInfo').textContent='Ange artikelnummer manuellt.'}
+          function closeModal(){document.getElementById('scanModal').classList.remove('show')}
+          window.onNativeBarcode=function(code){document.getElementById('manualCode').value=code;lookup(code)}
+          function lookup(code){code=(code||'').trim().toUpperCase();const a=state.articles.find(x=>x.code===code);const f=document.getElementById('found');if(!a){f.innerHTML='<div class="notice red">Ingen artikel hittades.</div>';return}let actions='';if(state.role==='admin'){actions='<div class="seg"><button onclick="move(\\''+a.code+'\\',\\'in\\')">Inleverans +1</button><button onclick="move(\\''+a.code+'\\',\\'out\\')">Uttag -1</button></div>'}else if(state.role==='tech'){if(gateOpen('out'))actions='<button class="btn dark full" onclick="move(\\''+a.code+'\\',\\'out\\')">Bekräfta uttag • 1 st</button>';else actions='<div class="notice red">Uttag är stängt. Administratör måste öppna uttag.</div>';actions+=returnButton(a.code)}else actions='<div class="notice blue">Kontrollant har endast läsbehörighet.</div>';f.innerHTML='<div class="card" style="margin-top:12px"><div class="code">'+a.code+'</div><h3>'+a.name+'</h3><div class="row"><span>Lagersaldo</span><span class="qty">'+a.qty+' st</span></div>'+actions+'</div>'}
+          function move(code,type){const a=state.articles.find(x=>x.code===code);if(!a)return;if(state.role==='control')return;if(state.role==='tech'&&type!=='out')return;if(state.role==='tech'&&!gateOpen('out'))return;if(type==='out'&&a.qty<1){alert('Otillräckligt lagersaldo');return}a.qty+=type==='in'?1:-1;state.history.unshift({at:new Date().toISOString(),day:today(),user:state.role==='tech'?'Ali Yılmaz':'Administratör',kind:type==='in'?'INLEVERANS':'UTTAG',code:a.code,name:a.name,qty:type==='in'?1:-1,returned:0});save();lookup(code)}
+          function returnButton(code){const h=state.history.find(x=>x.day===today()&&x.user==='Ali Yılmaz'&&x.kind==='UTTAG'&&x.code===code&&Math.abs(x.qty)>x.returned);if(!h)return '';return '<button class="btn soft full" style="margin-top:10px" onclick="ret(\\''+code+'\\')">Returnera 1 st</button>'}
+          function ret(code){if(state.role!=='tech')return;const h=state.history.find(x=>x.day===today()&&x.user==='Ali Yılmaz'&&x.kind==='UTTAG'&&x.code===code&&Math.abs(x.qty)>x.returned);if(!h){alert('Ingen retur möjlig idag');return}h.returned=(h.returned||0)+1;const a=state.articles.find(x=>x.code===code);a.qty++;state.history.unshift({at:new Date().toISOString(),day:today(),user:'Ali Yılmaz',kind:'RETUR',code:a.code,name:a.name,qty:1,source:h.at});save();lookup(code)}
+          function fmt(t){return new Date(t).toLocaleString('sv-SE',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}
+          function render(){
+            document.getElementById('roleSel').value=state.role;
+            document.getElementById('pn').value=state.role==='admin'?'900101-1234':'900101-••••';
+            document.getElementById('totalQty').textContent=state.articles.reduce((s,a)=>s+a.qty,0);
+            const open=state.gate.until>Date.now(),pill=document.getElementById('gatePill'),gt=document.getElementById('gateText');
+            pill.className='pill '+(open?'open':'closed');pill.textContent=open?(state.gate.type==='out'?'Uttag öppet':'Inleverans öppen'):'Stängt';
+            gt.textContent=open?'Öppet till '+new Date(state.gate.until).toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'}):'Administratör öppnar.';
+            document.getElementById('inventory').innerHTML=state.articles.map(a=>'<div class="item row"><div><b>'+a.name+'</b><div class="code">'+a.code+' • Min '+a.min+'</div></div><div class="qty">'+a.qty+' st</div></div>').join('');
+            const rows=state.history.slice(0,30).map(h=>'<div class="item"><div class="row"><div><b>'+h.kind+'</b> • '+h.name+'<div class="code">'+h.code+' • '+h.user+'</div></div><div class="qty">'+(h.qty>0?'+':'')+h.qty+'</div></div><div class="time">'+fmt(h.at)+'</div></div>').join('');
+            document.getElementById('history').innerHTML=rows||'<div class="muted">Ingen historik ännu.</div>';
+            document.getElementById('recent').innerHTML=state.history.slice(0,4).map(h=>'<div class="item row"><div><b>'+h.kind+'</b><div class="code">'+h.name+' • '+fmt(h.at)+'</div></div><b>'+(h.qty>0?'+':'')+h.qty+'</b></div>').join('')||'<div class="muted">Inga händelser idag.</div>';
+            const ah=document.getElementById('adminHome');
+            if(state.role==='admin')ah.innerHTML='<div class="adminbar"><b>Administration</b><div class="muted">Öppna tidsstyrd lagerhantering.</div><div class="grid"><button class="btn primary" onclick="openGate(\\'out\\')">Öppna uttag 1 tim</button><button class="btn soft" onclick="openGate(\\'in\\')">Öppna inleverans 1 tim</button></div><button class="btn danger full" onclick="closeGate()">Stäng lagerhantering</button></div>';
+            else if(state.role==='tech')ah.innerHTML='<div class="notice blue">Du kan göra uttag när administratören har öppnat uttag. Du kan endast returnera artiklar som du själv har tagit ut idag.</div>';
+            else ah.innerHTML='<div class="notice blue">Kontrollant: läsbehörighet utan lagerändringar.</div>';
+          }
+          render();setInterval(render,30000);
+          </script>
+          </body></html>
+          EOF
+
+      - name: Build APK
+        working-directory: viab-servicebil-lager/android
+        run: |
+          gradle --no-daemon :app:assembleDebug
+          mkdir -p ../build-output
+          cp app/build/outputs/apk/debug/app-debug.apk ../build-output/VIAB-Servicebil-Lager-v1.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: VIAB-Servicebil-Lager-v1
+          path: viab-servicebil-lager/build-output/VIAB-Servicebil-Lager-v1.apk
+          if-no-files-found: error

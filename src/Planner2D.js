@@ -422,15 +422,15 @@ function WallDragHandle({
         horizontal
           ? {
               left,
-              top: top - 18,
-              width: Math.max(42, width),
-              height: 36,
+              top: top - 22,
+              width: Math.max(48, width),
+              height: 44,
             }
           : {
-              left: left - 18,
+              left: left - 22,
               top,
-              width: 36,
-              height: Math.max(42, height),
+              width: 44,
+              height: Math.max(48, height),
             },
       ]}
     />
@@ -722,7 +722,14 @@ function renderDimension(dimension, scale, selected) {
     y: (p1.y + p2.y) / 2,
   };
 
-  const color = selected ? SELECTED : "#66788A";
+  const baseColor = dimension.auto
+    ? dimension.kind === "clearance"
+      ? "#5E7893"
+      : dimension.kind === "equipment"
+        ? "#7F91A4"
+        : "#93A2B2"
+    : "#66788A";
+  const color = selected ? SELECTED : baseColor;
   const labelWidth = 58;
   const labelHeight = 18;
 
@@ -784,7 +791,7 @@ function renderDimension(dimension, scale, selected) {
         height={labelHeight}
         rx={5}
         fill="#FFFFFF"
-        stroke={selected ? SELECTED : "#D5DDE5"}
+        stroke={selected ? SELECTED : dimension.auto ? "#DDE4EA" : "#D5DDE5"}
         strokeWidth={1}
       />
       <SvgText
@@ -793,7 +800,7 @@ function renderDimension(dimension, scale, selected) {
         textAnchor="middle"
         fontSize={8}
         fontWeight="800"
-        fill={selected ? SELECTED : "#405267"}
+        fill={selected ? SELECTED : dimension.auto ? "#52677C" : "#405267"}
       >
         {Math.round(length)} mm
       </SvgText>
@@ -811,6 +818,7 @@ export default function Planner2D({
   wallDraft,
   setWallDraft,
   commit,
+  autoDimensions = [],
 }) {
   const window = useWindowDimensions();
   const outerWidth = Math.max(280, window.width - 32);
@@ -1100,26 +1108,22 @@ export default function Planner2D({
     }
 
     if (tool === "select") {
+      const dimension = findDimension(point);
+      if (dimension) {
+        setSelected({
+          kind: "dimension",
+          id: dimension.id,
+        });
+        return;
+      }
+
       const entity = entityAtPoint(
         point,
         editor,
         240
       );
 
-      if (entity) {
-        setSelected(entity);
-        return;
-      }
-
-      const dimension = findDimension(point);
-      setSelected(
-        dimension
-          ? {
-              kind: "dimension",
-              id: dimension.id,
-            }
-          : null
-      );
+      setSelected(entity || null);
     }
   }
 
@@ -1427,6 +1431,12 @@ export default function Planner2D({
             )
           )}
 
+          {autoDimensions.map((dimension) => (
+            <React.Fragment key={dimension.id}>
+              {renderDimension(dimension, scale, false)}
+            </React.Fragment>
+          ))}
+
           {editor.utilities.map(
             (utility) => (
               <UtilityMarker
@@ -1511,34 +1521,34 @@ export default function Planner2D({
           />
         ))}
 
+        {tool === "select" &&
+          editor.walls.map((wall) => (
+            <WallDragHandle
+              key={"drag-" + wall.id}
+              wall={wall}
+              scale={scale}
+              roomW={roomW}
+              roomD={roomD}
+              onSelect={setSelected}
+              onPreview={(delta) =>
+                setWallDragPreview(
+                  delta
+                    ? {
+                        wallId: wall.id,
+                        ...delta,
+                      }
+                    : null
+                )
+              }
+              onMoveEnd={(delta) =>
+                moveWholeWall(wall.id, delta)
+              }
+            />
+          ))}
+
         {selectedWall &&
           tool === "select" && (
             <>
-              <WallDragHandle
-                wall={selectedWall}
-                scale={scale}
-                roomW={roomW}
-                roomD={roomD}
-                onSelect={setSelected}
-                onPreview={(delta) =>
-                  setWallDragPreview(
-                    delta
-                      ? {
-                          wallId:
-                            selectedWall.id,
-                          ...delta,
-                        }
-                      : null
-                  )
-                }
-                onMoveEnd={(delta) =>
-                  moveWholeWall(
-                    selectedWall.id,
-                    delta
-                  )
-                }
-              />
-
               <EndpointHandle
                 point={{
                   x: selectedWall.x1,
@@ -1598,6 +1608,7 @@ export default function Planner2D({
                   )
                 }
               />
+
             </>
           )}
       </Pressable>
@@ -1650,10 +1661,8 @@ export default function Planner2D({
       {tool === "select" &&
         selectedWall && (
           <Text style={styles.hintMuted}>
-            Dra mitt på väggen för att
-            flytta hela väggen. Dra blå
-            hörn för att ändra längden.
-            Anslutna hörn följer med.
+            Tryck och dra direkt på en vägg för att flytta den.
+            Blå hörn ändrar längden och anslutna hörn följer med.
           </Text>
         )}
     </View>

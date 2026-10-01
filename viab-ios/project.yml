@@ -1,0 +1,31 @@
+name: VIABServicebilLager
+options:
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+targets:
+  VIABServicebilLager:
+    type: application
+    platform: iOS
+    sources:
+      - path: VIABServicebilLager
+        excludes:
+          - Web
+    resources:
+      - path: VIABServicebilLager/Web
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: se.vasterasindustri.viabservicebillager
+        PRODUCT_NAME: "VIAB Servicebil Lager"
+        MARKETING_VERSION: "5.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        INFOPLIST_FILE: VIABServicebilLager/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        CODE_SIGN_STYLE: Automatic
+    scheme:
+      testTargets: []
+      gatherCoverageData: false
